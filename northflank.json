@@ -1,0 +1,23 @@
+{
+  "build": {
+    "type": "nixpacks",
+    "env": {
+      "NODE_ENV": "production"
+    }
+  },
+  "deploy": {
+    "replicas": 1,
+    "resources": {
+      "cpu": 100,
+      "memory": 512
+    }
+  },
+  "services": [
+    {
+      "name": "web",
+      "port": 3000,
+      "protocol": "HTTP",
+      "type": "web"
+    }
+  ]
+}
