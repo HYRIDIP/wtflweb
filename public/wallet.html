@@ -128,6 +128,50 @@
       font-weight: 600;
     }
   </style>
+
+  <style>
+  .text-profit {
+    color: #00b15e;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  
+  .text-loss {
+    color: #f6465d;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  
+  .price-up {
+    color: #00b15e;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  
+  .price-down {
+    color: #f6465d;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  
+  /* Стили для canvas графиков */
+  canvas {
+    display: block;
+  }
+  
+  /* Убедимся что графики видны */
+  .group1 canvas,
+  .group2 canvas, 
+  .group3 canvas,
+  .group4 canvas,
+  .group-bottom canvas {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent;
+  }
+</style>
 </body>
 
 </html>
+
