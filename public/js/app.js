@@ -1,11 +1,11 @@
 class WaterFallApp {
   constructor() {
-    this.tg = window.Telegram?.WebApp;
+    this.tg = null;
     this.socket = null;
     this.currentUser = null;
     this.marketData = null;
     this.cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
-    this.isInitialized = false;
+    this.isTelegram = false;
     
     this.init();
   }
@@ -14,122 +14,105 @@ class WaterFallApp {
     try {
       console.log('🚀 Инициализация WaterFall App...');
       
-      if (this.tg) {
-        // Инициализация Telegram Web App
-        this.tg.ready();
-        this.tg.expand();
-        this.tg.enableClosingConfirmation();
-        this.tg.setHeaderColor('#1e2329');
-        this.tg.setBackgroundColor('#070707');
-        
-        console.log('📱 Telegram Web App инициализирован');
-        
-        // Получаем данные пользователя из Telegram
-        const telegramUser = this.tg.initDataUnsafe?.user;
-        
-        if (telegramUser) {
-          console.log('👤 Данные пользователя Telegram:', telegramUser);
-          await this.handleTelegramUser(telegramUser);
-        } else {
-          console.log('❌ Данные пользователя не найдены');
-          this.handleNoUserData();
-        }
-      } else {
-        console.log('🌐 Режим браузера (не Telegram)');
-        this.handleBrowserMode();
-      }
+      // Проверяем Telegram Web App
+      await this.initTelegram();
       
-      this.isInitialized = true;
+      // Создаем или загружаем пользователя
+      await this.initUser();
+      
+      // Подключаемся к серверу
+      await this.connectToServer();
+      
+      // Обновляем интерфейс
+      this.updateUI();
+      
+      console.log('✅ Приложение успешно инициализировано');
+      
     } catch (error) {
       console.error('❌ Ошибка инициализации:', error);
       this.showNotification('Ошибка загрузки приложения', 'error');
     }
   }
   
-  async handleTelegramUser(telegramData) {
-    try {
-      this.currentUser = {
-        id: telegramData.id.toString(),
-        username: telegramData.username || `User${telegramData.id.toString().slice(-4)}`,
-        firstName: telegramData.first_name || '',
-        lastName: telegramData.last_name || '',
-        photoUrl: telegramData.photo_url || '',
-        languageCode: telegramData.language_code || 'en',
-        isPremium: telegramData.is_premium || false,
-        telegramData: telegramData
-      };
+  async initTelegram() {
+    // Проверяем наличие Telegram Web App
+    if (window.Telegram && window.Telegram.WebApp) {
+      this.tg = window.Telegram.WebApp;
+      this.isTelegram = true;
       
-      console.log('✅ Пользователь обработан:', this.currentUser.username);
+      // Инициализируем Telegram Web App
+      this.tg.ready();
+      this.tg.expand();
+      this.tg.enableClosingConfirmation();
+      this.tg.setHeaderColor('#1e2329');
+      this.tg.setBackgroundColor('#070707');
       
-      // Подключаемся к серверу
-      await this.connectToServer();
-      
-      // Определяем текущую страницу и действуем соответственно
-      const currentPage = this.getCurrentPage();
-      console.log('📄 Текущая страница:', currentPage);
-      
-      switch (currentPage) {
-        case 'login':
-        case 'loading':
-          // Автоматически переходим в кошелек
-          setTimeout(() => this.showWallet(), 500);
-          break;
-        case 'other':
-          // Если неизвестная страница, идем в кошелек
-          this.showWallet();
-          break;
-        default:
-          // Для торговых страниц и кошелька остаемся на них
-          this.updateUI();
-          break;
-      }
-      
-    } catch (error) {
-      console.error('❌ Ошибка обработки пользователя:', error);
-      this.showNotification('Ошибка загрузки данных пользователя', 'error');
+      console.log('📱 Telegram Web App инициализирован');
+    } else {
+      console.log('🌐 Режим браузера (не Telegram)');
+      this.isTelegram = false;
     }
   }
   
-  handleNoUserData() {
-    const currentPage = this.getCurrentPage();
-    if (currentPage !== 'login' && currentPage !== 'loading') {
-      this.showLogin();
+  async initUser() {
+    // Пытаемся получить данные из localStorage
+    const savedUser = localStorage.getItem('telegramUser');
+    const isTelegramSaved = localStorage.getItem('isTelegram') === 'true';
+    
+    if (savedUser && isTelegramSaved) {
+      // Используем сохраненные данные
+      const userData = JSON.parse(savedUser);
+      this.currentUser = this.createUserObject(userData, true);
+      console.log('👤 Пользователь загружен из localStorage:', this.currentUser.username);
+    } else if (this.isTelegram && this.tg.initDataUnsafe?.user) {
+      // Используем данные из Telegram
+      const telegramUser = this.tg.initDataUnsafe.user;
+      this.currentUser = this.createUserObject(telegramUser, true);
+      
+      // Сохраняем для будущего использования
+      localStorage.setItem('telegramUser', JSON.stringify(telegramUser));
+      localStorage.setItem('isTelegram', 'true');
+      
+      console.log('👤 Пользователь из Telegram:', this.currentUser.username);
+    } else {
+      // Создаем демо-пользователя
+      this.currentUser = this.createDemoUser();
+      console.log('👤 Демо-пользователь создан:', this.currentUser.username);
     }
   }
   
-  handleBrowserMode() {
-    // Режим разработки/тестирования в браузере
-    this.currentUser = {
-      id: 'dev_' + Date.now(),
-      username: 'DemoUser',
+  createUserObject(userData, isRealUser = false) {
+    return {
+      id: userData.id.toString(),
+      username: userData.username || `User${userData.id.toString().slice(-4)}`,
+      firstName: userData.first_name || '',
+      lastName: userData.last_name || '',
+      photoUrl: userData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
+      balance: isRealUser ? 0 : 1000, // Демо-пользователь получает стартовый баланс
+      crypto: isRealUser ? 
+        { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 } :
+        { MINT: 10, RWK: 100, SKH: 1000, WTFL: 5, CULT: 50 },
+      totalInvested: 0,
+      firstLogin: isRealUser,
+      isRealUser: isRealUser,
+      telegramData: userData
+    };
+  }
+  
+  createDemoUser() {
+    return {
+      id: 'demo_' + Date.now(),
+      username: 'DemoTrader',
       firstName: 'Demo',
       lastName: 'User',
-      photoUrl: '',
+      photoUrl: '/assets/homepage/unsplash-p-at-a8xe.png',
       balance: 1000,
-      crypto: { MINT: 10, RWK: 100, SKH: 1000, WTFL: 5, CULT: 50 }
+      crypto: { MINT: 10, RWK: 100, SKH: 1000, WTFL: 5, CULT: 50 },
+      totalInvested: 1000,
+      firstLogin: false,
+      isRealUser: false,
+      telegramData: null
     };
-    
-    this.connectToServer();
-    
-    const currentPage = this.getCurrentPage();
-    if (currentPage === 'login' || currentPage === 'loading') {
-      this.showWallet();
-    } else {
-      this.updateUI();
-    }
-  }
-  
-  getCurrentPage() {
-    const path = window.location.pathname;
-    const page = path.split('/').pop() || 'login.html';
-    
-    if (page === 'login.html' || page === '' || page === '/') return 'login';
-    if (page === 'loading.html') return 'loading';
-    if (page === 'wallet.html') return 'wallet';
-    if (page.includes('trading-')) return 'trading';
-    if (page === 'deposit.html') return 'deposit';
-    if (page === 'withdraw.html') return 'withdraw';
-    return 'other';
   }
   
   async connectToServer() {
@@ -139,22 +122,22 @@ class WaterFallApp {
       }
       
       console.log('🔌 Подключение к серверу...');
-      this.socket = io();
       
-      // Обработчики событий Socket.io
+      // Подключаем Socket.io
+      this.socket = io();
       this.setupSocketHandlers();
       
-      // Отправляем данные Telegram пользователя на сервер
-      if (this.currentUser.telegramData) {
-        this.socket.emit('join', this.currentUser.telegramData);
-      } else {
-        // Для демо-режима отправляем базовые данные
-        this.socket.emit('join', {
+      // Отправляем данные пользователя на сервер
+      const userDataToSend = this.currentUser.isRealUser ? 
+        this.currentUser.telegramData : 
+        {
           id: this.currentUser.id,
           username: this.currentUser.username,
-          first_name: this.currentUser.firstName
-        });
-      }
+          first_name: this.currentUser.firstName,
+          last_name: this.currentUser.lastName
+        };
+      
+      this.socket.emit('join', userDataToSend);
       
       console.log('✅ Запрос на подключение отправлен');
       
@@ -166,9 +149,16 @@ class WaterFallApp {
   
   setupSocketHandlers() {
     this.socket.on('userData', (userData) => {
-      console.log('📨 Получены данные пользователя:', userData);
-      this.currentUser = { ...this.currentUser, ...userData };
-      this.updateUI();
+      console.log('📨 Получены данные пользователя с сервера');
+      
+      // Обновляем данные пользователя с сервера
+      if (userData && userData.id === this.currentUser.id) {
+        this.currentUser.balance = userData.balance || this.currentUser.balance;
+        this.currentUser.crypto = userData.crypto || this.currentUser.crypto;
+        this.currentUser.totalInvested = userData.totalInvested || this.currentUser.totalInvested;
+        
+        this.updateUI();
+      }
     });
     
     this.socket.on('marketData', (data) => {
@@ -180,7 +170,7 @@ class WaterFallApp {
     });
     
     this.socket.on('marketUpdate', (data) => {
-      if (this.marketData) {
+      if (this.marketData && data.crypto) {
         this.marketData.prices[data.crypto] = data.price;
         this.updatePrices();
         this.updateHoldings();
@@ -201,13 +191,8 @@ class WaterFallApp {
       );
       if (this.currentUser) {
         this.currentUser.balance = data.newBalance;
+        this.updateUI();
       }
-      this.updateUI();
-    });
-    
-    this.socket.on('marketTrade', (data) => {
-      // Логируем рыночные сделки
-      console.log('💱 Рыночная сделка:', data);
     });
     
     this.socket.on('error', (error) => {
@@ -221,32 +206,17 @@ class WaterFallApp {
     
     this.socket.on('disconnect', (reason) => {
       console.log('🔌 Отключение от сервера:', reason);
-      if (reason === 'io server disconnect') {
-        this.showNotification('Соединение с сервером потеряно', 'error');
-      }
-    });
-    
-    this.socket.on('reconnect', () => {
-      console.log('🔁 Переподключение к серверу');
-      this.showNotification('Соединение восстановлено', 'success');
     });
   }
   
   updateUI() {
     if (!this.currentUser) return;
     
-    console.log('🎨 Обновление интерфейса...');
-    
     // Обновляем аватарку
     const avatarEl = document.getElementById('userAvatar');
-    if (avatarEl) {
-      if (this.currentUser.photoUrl) {
-        avatarEl.src = this.currentUser.photoUrl;
-        avatarEl.style.display = 'block';
-      } else {
-        // Заглушка для аватара
-        avatarEl.src = '/assets/homepage/unsplash-p-at-a8xe.png';
-      }
+    if (avatarEl && this.currentUser.photoUrl) {
+      avatarEl.src = this.currentUser.photoUrl;
+      avatarEl.style.display = 'block';
     }
     
     // Обновляем имя пользователя
@@ -256,26 +226,25 @@ class WaterFallApp {
       nameEl.textContent = `Привет, ${displayName}`;
     }
     
-    // Обновляем баланс
+    // Обновляем балансы
     this.updateBalance();
     this.updateHoldings();
   }
   
   updateBalance() {
-    const balanceEl = document.getElementById('userBalance');
-    if (balanceEl) {
-      balanceEl.textContent = `$${(this.currentUser.balance || 0).toFixed(2)}`;
-    }
+    const balanceElements = [
+      'userBalance',
+      'availableBalance', 
+      'currentBalance',
+      'usdBalance'
+    ];
     
-    const availableBalanceEl = document.getElementById('availableBalance');
-    if (availableBalanceEl) {
-      availableBalanceEl.textContent = `$${(this.currentUser.balance || 0).toFixed(2)}`;
-    }
-    
-    const currentBalanceEl = document.getElementById('currentBalance');
-    if (currentBalanceEl) {
-      currentBalanceEl.textContent = `$${(this.currentUser.balance || 0).toFixed(2)}`;
-    }
+    balanceElements.forEach(id => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.textContent = `$${(this.currentUser.balance || 0).toFixed(2)}`;
+      }
+    });
   }
   
   updateHoldings() {
@@ -287,6 +256,7 @@ class WaterFallApp {
       const value = amount * price;
       const change = this.getPriceChange(crypto);
       
+      // Обновляем холдинги в кошельке
       const container = document.getElementById(`holding-${crypto}`);
       if (container) {
         container.innerHTML = `
@@ -302,7 +272,7 @@ class WaterFallApp {
       
       // Обновляем баланс на торговых страницах
       const cryptoBalanceEl = document.getElementById('cryptoBalance');
-      if (cryptoBalanceEl && this.getCurrentPage() === 'trading') {
+      if (cryptoBalanceEl) {
         cryptoBalanceEl.textContent = amount.toFixed(4);
       }
     });
@@ -390,18 +360,6 @@ class WaterFallApp {
   }
   
   // Навигация
-  showLogin() {
-    window.location.href = 'login.html';
-  }
-  
-  showLoading() {
-    window.location.href = 'loading.html';
-  }
-  
-  showWallet() {
-    window.location.href = 'wallet.html';
-  }
-  
   showTradingPage(crypto) {
     const cryptoPages = {
       'MINT': 'trading-MINT.html',
@@ -425,6 +383,10 @@ class WaterFallApp {
   
   showWithdraw() {
     window.location.href = 'withdraw.html';
+  }
+  
+  showWallet() {
+    window.location.href = 'wallet.html';
   }
   
   // Уведомления
@@ -504,19 +466,16 @@ class WaterFallApp {
       const result = await response.json();
       
       if (result.success) {
-        // Открываем ссылку на оплату в Telegram
         if (this.tg && this.tg.openInvoice) {
+          // В Telegram - используем встроенную оплату
           this.tg.openInvoice(result.invoiceUrl, (status) => {
             if (status === 'paid') {
-              this.confirmDeposit(result.invoiceId);
-            } else if (status === 'failed' || status === 'cancelled') {
-              this.showNotification('Оплата отменена', 'error');
+              this.showNotification('Оплата подтверждена!', 'success');
             }
           });
         } else {
-          // Fallback - открываем в новом окне
+          // В браузере - открываем в новом окне
           window.open(result.invoiceUrl, '_blank');
-          this.showNotification('Откройте ссылку для оплаты', 'info');
         }
         
         return result.invoiceUrl;
@@ -528,34 +487,6 @@ class WaterFallApp {
       console.error('❌ Ошибка создания депозита:', error);
       this.showNotification('❌ Ошибка сети', 'error');
       return null;
-    }
-  }
-  
-  async confirmDeposit(invoiceId) {
-    try {
-      const response = await fetch('/api/deposit/confirm', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId: this.currentUser.id,
-          invoiceId: invoiceId
-        })
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        this.showNotification(`✅ Депозит $${result.amount} подтвержден!`, 'success');
-        return true;
-      } else {
-        this.showNotification(`❌ ${result.error}`, 'error');
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Ошибка подтверждения депозита:', error);
-      return false;
     }
   }
 }
@@ -572,8 +503,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function startTrading(crypto) {
   if (app && app.showTradingPage) {
     app.showTradingPage(crypto);
-  } else {
-    console.error('App not initialized');
   }
 }
 
@@ -592,5 +521,11 @@ function goToWithdraw() {
 function goToWallet() {
   if (app && app.showWallet) {
     app.showWallet();
+  }
+}
+
+function placeOrder(type, orderType) {
+  if (window.tradingManager) {
+    window.tradingManager.placeOrder(type, orderType);
   }
 }
