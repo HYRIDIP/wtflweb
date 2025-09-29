@@ -18,9 +18,15 @@ const io = socketIo(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Конфигурация CryptoBot
-const CRYPTO_BOT_TOKEN = process.env.CRYPTO_BOT_TOKEN || 'your_cryptobot_token';
+// Конфигурация платежных систем
+const CRYPTO_BOT_TOKEN = '403317:AA9S2Aytj2ze6DUO7gLKPdDjwfWgERo9zpu';
 const CRYPTO_BOT_URL = 'https://pay.crypt.bot/api';
+
+// Кошельки для вывода
+const WALLETS = {
+  TON: 'UQC5sl8NXJaPPl-MQf3xQm0ZcHTekNRMKW-PJQlIb92Kzt0m',
+  USDT: 'TDj9Fafq4jWJ51TXA5QgXSTduvvjUN6xau' // TRC20
+};
 
 // База данных в памяти
 let users = new Map();
@@ -81,20 +87,19 @@ function initializePriceHistory() {
   Object.keys(cryptoData).forEach(crypto => {
     const basePrice = cryptoData[crypto].price;
     for (let i = 100; i > 0; i--) {
-      const randomChange = (Math.random() - 0.5) * 0.02; // 2% волатильность
+      const randomChange = (Math.random() - 0.5) * 0.02;
       const newPrice = Math.max(0.0001, basePrice * (1 + randomChange));
       priceHistory[crypto].push({
-        time: now - (i * 60000), // 1 минута интервал
+        time: now - (i * 60000),
         price: newPrice
       });
     }
-    // Устанавливаем текущую цену как последнюю в истории
     cryptoData[crypto].price = priceHistory[crypto][priceHistory[crypto].length - 1].price;
   });
 }
 initializePriceHistory();
 
-// Создание пользователя с данными из Telegram
+// Создание пользователя
 function createUser(telegramData) {
   const userId = telegramData.id.toString();
   
@@ -106,25 +111,21 @@ function createUser(telegramData) {
     photoUrl: telegramData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
     balance: 0,
     crypto: { 
-      MINT: 0, 
-      RWK: 0, 
-      SKH: 0, 
-      WTFL: 0, 
-      CULT: 0 
+      MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 
     },
     totalInvested: 0,
     firstLogin: true,
     pendingDeposits: new Map(),
+    withdrawals: [],
     createdAt: new Date().toISOString(),
     lastActive: new Date().toISOString()
   };
   
   users.set(userId, user);
-  console.log(`✅ Новый пользователь создан: ${user.username} (ID: ${user.id})`);
+  console.log(`✅ Новый пользователь: ${user.username}`);
   return user;
 }
 
-// Получение пользователя с созданием при необходимости
 function getOrCreateUser(telegramData) {
   if (!telegramData || !telegramData.id) {
     throw new Error('Invalid Telegram user data');
@@ -136,16 +137,88 @@ function getOrCreateUser(telegramData) {
   if (!user) {
     user = createUser(telegramData);
   } else {
-    // Обновляем время активности
     user.lastActive = new Date().toISOString();
     user.firstLogin = false;
-    console.log(`🔁 Пользователь вошел: ${user.username} (ID: ${user.id})`);
   }
   
   return user;
 }
 
-// Функция обновления цены на основе ордеров
+// CryptoBot интеграция
+async function createCryptoBotInvoice(amount, userId) {
+  try {
+    const response = await axios.post(`${CRYPTO_BOT_URL}/createInvoice`, {
+      asset: 'USDT',
+      amount: amount.toString(),
+      description: `Deposit to WaterFall Trading - User ${userId}`,
+      hidden_message: `User ID: ${userId}`,
+      paid_btn_name: 'viewItem',
+      paid_btn_url: `https://t.me/your_bot?start=deposit_success_${userId}`,
+      payload: JSON.stringify({ userId, amount, type: 'deposit' })
+    }, {
+      headers: {
+        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN
+      }
+    });
+    
+    console.log('CryptoBot Invoice Response:', response.data);
+    return response.data.result;
+  } catch (error) {
+    console.error('CryptoBot Error:', error.response?.data || error.message);
+    throw new Error('Payment service unavailable. Please try again later.');
+  }
+}
+
+// Функция вывода через CryptoBot
+async function processWithdrawal(userId, amount, asset, address) {
+  try {
+    // В реальном приложении здесь будет вызов API для вывода
+    // Для демо просто возвращаем успех
+    
+    const user = users.get(userId);
+    if (!user) throw new Error('User not found');
+    
+    // Проверяем баланс
+    if (user.balance < amount) {
+      throw new Error('Insufficient balance');
+    }
+    
+    const fee = amount * 0.03;
+    const netAmount = amount - fee;
+    
+    // Списываем средства
+    user.balance -= amount;
+    
+    // Добавляем в историю выводов
+    const withdrawal = {
+      id: 'WD' + Date.now() + Math.random().toString(36).substr(2, 5).toUpperCase(),
+      userId: userId,
+      amount: amount,
+      netAmount: netAmount,
+      fee: fee,
+      asset: asset,
+      address: address,
+      status: 'completed',
+      timestamp: new Date().toISOString()
+    };
+    
+    user.withdrawals.push(withdrawal);
+    
+    return {
+      success: true,
+      withdrawalId: withdrawal.id,
+      netAmount: netAmount,
+      fee: fee,
+      address: address
+    };
+    
+  } catch (error) {
+    console.error('Withdrawal Error:', error);
+    throw error;
+  }
+}
+
+// Обновление цены
 function updateCryptoPrice(cryptoId) {
   const ordersForCrypto = orders[cryptoId];
   const currentData = cryptoData[cryptoId];
@@ -154,25 +227,19 @@ function updateCryptoPrice(cryptoId) {
   const sellVolume = ordersForCrypto.sell.reduce((sum, order) => sum + order.amount, 0);
   
   if (buyVolume === 0 && sellVolume === 0) {
-    // Если нет ордеров, добавляем небольшое случайное движение
-    const randomChange = (Math.random() - 0.5) * 0.01; // 1% случайное изменение
+    const randomChange = (Math.random() - 0.5) * 0.01;
     currentData.price = Math.max(0.0001, currentData.price * (1 + randomChange));
   } else {
-    // Модель ценообразования на основе спроса/предложения
     const volumeRatio = (buyVolume - sellVolume) / (currentData.circulating || 1);
-    const priceChange = volumeRatio * 0.02; // 2% максимальное изменение
-    
-    // Обновляем цену
+    const priceChange = volumeRatio * 0.02;
     currentData.price = Math.max(0.0001, currentData.price * (1 + priceChange));
   }
   
-  // Добавляем в историю
   priceHistory[cryptoId].push({
     time: Date.now(),
     price: currentData.price
   });
   
-  // Ограничиваем историю
   if (priceHistory[cryptoId].length > 200) {
     priceHistory[cryptoId].shift();
   }
@@ -184,9 +251,8 @@ function updateCryptoPrice(cryptoId) {
 function processOrders(cryptoId) {
   const cryptoOrders = orders[cryptoId];
   
-  // Сортируем ордера
-  cryptoOrders.buy.sort((a, b) => b.price - a.price); // Покупки по убыванию цены
-  cryptoOrders.sell.sort((a, b) => a.price - b.price); // Продажи по возрастанию цены
+  cryptoOrders.buy.sort((a, b) => b.price - a.price);
+  cryptoOrders.sell.sort((a, b) => a.price - b.price);
   
   let trades = [];
   let changed = false;
@@ -196,9 +262,8 @@ function processOrders(cryptoId) {
     const bestSell = cryptoOrders.sell[0];
     
     if (bestBuy.price >= bestSell.price) {
-      // Находим совпадение - исполняем сделку
       const tradeAmount = Math.min(bestBuy.amount, bestSell.amount);
-      const tradePrice = bestSell.price; // Исполняем по цене продавца
+      const tradePrice = bestSell.price;
       
       const buyer = users.get(bestBuy.userId);
       const seller = users.get(bestSell.userId);
@@ -206,7 +271,6 @@ function processOrders(cryptoId) {
       if (buyer && seller) {
         const totalCost = tradeAmount * tradePrice;
         
-        // Исполняем сделку
         seller.crypto[cryptoId] = (seller.crypto[cryptoId] || 0) - tradeAmount;
         buyer.crypto[cryptoId] = (buyer.crypto[cryptoId] || 0) + tradeAmount;
         buyer.balance -= totalCost;
@@ -222,7 +286,6 @@ function processOrders(cryptoId) {
           timestamp: Date.now()
         });
         
-        // Отправляем уведомления
         io.to(bestBuy.userId).emit('orderExecuted', {
           crypto: cryptoId,
           type: 'buy',
@@ -239,7 +302,6 @@ function processOrders(cryptoId) {
           total: totalCost
         });
         
-        // Рассылаем всем о сделке
         io.emit('marketTrade', {
           crypto: cryptoId,
           amount: tradeAmount,
@@ -250,7 +312,6 @@ function processOrders(cryptoId) {
         changed = true;
       }
       
-      // Обновляем ордера
       bestBuy.amount -= tradeAmount;
       bestSell.amount -= tradeAmount;
       
@@ -263,30 +324,10 @@ function processOrders(cryptoId) {
   }
   
   if (changed) {
-    // Обновляем цену после сделок
     updateCryptoPrice(cryptoId);
   }
   
   return trades;
-}
-
-// CryptoBot интеграция (упрощенная для демо)
-async function createCryptoBotInvoice(amount, userId) {
-  try {
-    // Для демо просто возвращаем фиктивные данные
-    // В реальном приложении здесь будет вызов API CryptoBot
-    const invoiceId = 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
-    return {
-      invoice_id: invoiceId,
-      pay_url: `https://t.me/CryptoBot?start=invoice_${invoiceId}`,
-      amount: amount.toString(),
-      status: 'active'
-    };
-  } catch (error) {
-    console.error('CryptoBot error:', error);
-    throw new Error('Payment service temporarily unavailable');
-  }
 }
 
 // Маршруты
@@ -306,7 +347,6 @@ app.get('/wallet.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'wallet.html'));
 });
 
-// Маршруты для отдельных криптовалют
 app.get('/trading-MINT.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'trading-MINT.html'));
 });
@@ -363,17 +403,6 @@ app.get('/api/cryptos', (req, res) => {
   res.json(cryptoData);
 });
 
-app.get('/api/users/count', (req, res) => {
-  res.json({ 
-    count: users.size,
-    users: Array.from(users.values()).map(u => ({
-      id: u.id,
-      username: u.username,
-      balance: u.balance
-    }))
-  });
-});
-
 app.post('/api/deposit/create', async (req, res) => {
   const { userId, amount } = req.body;
   
@@ -426,12 +455,10 @@ app.post('/api/deposit/confirm', (req, res) => {
   }
   
   // В реальном приложении здесь будет проверка статуса через CryptoBot API
-  // Для демо просто подтверждаем депозит
   user.balance += pendingDeposit.amount;
   user.totalInvested += pendingDeposit.amount;
   user.pendingDeposits.delete(invoiceId);
   
-  // Уведомляем пользователя через socket
   io.to(userId).emit('depositSuccess', {
     amount: pendingDeposit.amount,
     newBalance: user.balance
@@ -444,38 +471,35 @@ app.post('/api/deposit/confirm', (req, res) => {
   });
 });
 
-app.post('/api/withdraw', (req, res) => {
-  const { userId, amount, address } = req.body;
-  const user = users.get(userId);
+app.post('/api/withdraw', async (req, res) => {
+  const { userId, amount, address, method } = req.body;
   
-  if (!user) {
-    return res.json({ success: false, error: 'User not found' });
+  try {
+    if (!userId || !amount || !address || !method) {
+      return res.json({ success: false, error: 'Missing required fields' });
+    }
+    
+    const result = await processWithdrawal(userId, parseFloat(amount), method, address);
+    
+    res.json({ 
+      success: true,
+      withdrawalId: result.withdrawalId,
+      netAmount: result.netAmount,
+      fee: result.fee,
+      address: result.address
+    });
+    
+    // Уведомляем пользователя
+    io.to(userId).emit('withdrawalSuccess', {
+      withdrawalId: result.withdrawalId,
+      amount: amount,
+      netAmount: result.netAmount,
+      fee: result.fee
+    });
+    
+  } catch (error) {
+    res.json({ success: false, error: error.message });
   }
-  
-  if (!user.balance || user.balance < amount) {
-    return res.json({ success: false, error: 'Insufficient balance' });
-  }
-  
-  if (amount < 5) {
-    return res.json({ success: false, error: 'Minimum withdrawal is $5' });
-  }
-  
-  if (!address || address.length < 10) {
-    return res.json({ success: false, error: 'Invalid withdrawal address' });
-  }
-  
-  const fee = amount * 0.03;
-  const netAmount = amount - fee;
-  
-  // Выполняем вывод
-  user.balance -= amount;
-  
-  res.json({ 
-    success: true, 
-    netAmount: netAmount.toFixed(2),
-    fee: fee.toFixed(2),
-    transactionId: 'TX' + Date.now() + Math.random().toString(36).substr(2, 9).toUpperCase()
-  });
 });
 
 app.post('/api/order/create', (req, res) => {
@@ -504,28 +528,20 @@ app.post('/api/order/create', (req, res) => {
     timestamp: Date.now()
   };
   
-  // Проверка баланса
   if (type === 'buy') {
     const totalCost = order.amount * order.price;
     if (!user.balance || user.balance < totalCost) {
       return res.json({ success: false, error: 'Insufficient balance' });
     }
-    // Резервируем средства
     user.balance -= totalCost;
   } else if (type === 'sell') {
     if (!user.crypto[crypto] || user.crypto[crypto] < order.amount) {
       return res.json({ success: false, error: `Insufficient ${crypto} balance` });
     }
-    // Резервируем криптовалюту
     user.crypto[crypto] -= order.amount;
-  } else {
-    return res.json({ success: false, error: 'Invalid order type' });
   }
   
-  // Добавляем ордер
   orders[crypto][type].push(order);
-  
-  // Обрабатываем ордера
   const trades = processOrders(crypto);
   
   res.json({ 
@@ -535,18 +551,47 @@ app.post('/api/order/create', (req, res) => {
     executed: trades.length > 0
   });
   
-  // Рассылаем обновления
   io.emit('marketUpdate', {
     crypto: crypto,
     price: cryptoData[crypto].price,
     orders: orders[crypto]
   });
   
-  // Обновляем данные пользователя
   io.to(userId).emit('userData', user);
 });
 
-// Socket.io обработчики
+// Webhook для CryptoBot (для обработки платежей)
+app.post('/webhook/cryptobot', (req, res) => {
+  try {
+    const update = req.body;
+    console.log('CryptoBot Webhook:', update);
+    
+    // Обработка входящих платежей
+    if (update.update_id && update.payload) {
+      const payload = JSON.parse(update.payload);
+      
+      if (payload.type === 'deposit' && payload.userId) {
+        const user = users.get(payload.userId);
+        if (user) {
+          user.balance += parseFloat(payload.amount);
+          user.totalInvested += parseFloat(payload.amount);
+          
+          io.to(payload.userId).emit('depositSuccess', {
+            amount: payload.amount,
+            newBalance: user.balance
+          });
+        }
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Webhook Error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Socket.io
 io.on('connection', (socket) => {
   console.log('🔌 Новое подключение:', socket.id);
   
@@ -561,7 +606,6 @@ io.on('connection', (socket) => {
       socket.userId = user.id;
       socket.join(user.id);
       
-      // Отправляем данные пользователю
       socket.emit('userData', user);
       socket.emit('marketData', {
         prices: Object.fromEntries(
@@ -569,8 +613,6 @@ io.on('connection', (socket) => {
         ),
         history: priceHistory
       });
-      
-      console.log(`👤 Пользователь ${user.username} присоединился к сессии`);
       
     } catch (error) {
       console.error('Error in socket join:', error);
@@ -583,16 +625,14 @@ io.on('connection', (socket) => {
   });
 });
 
-// Периодическое обновление цен
+// Обновление цен
 setInterval(() => {
-  // Обновляем цены на основе активности
   Object.keys(cryptoData).forEach(crypto => {
-    if (Math.random() > 0.5) { // 50% chance для естественного движения
+    if (Math.random() > 0.5) {
       updateCryptoPrice(crypto);
     }
   });
   
-  // Рассылаем обновления всем подключенным клиентам
   if (io.engine.clientsCount > 0) {
     io.emit('marketData', {
       prices: Object.fromEntries(
@@ -601,18 +641,7 @@ setInterval(() => {
       history: priceHistory
     });
   }
-}, 5000); // Обновляем каждые 5 секунд
-
-// Статистика сервера
-setInterval(() => {
-  const activeUsers = Array.from(users.values()).filter(u => {
-    const lastActive = new Date(u.lastActive);
-    const now = new Date();
-    return (now - lastActive) < 5 * 60 * 1000; // 5 минут
-  }).length;
-  
-  console.log(`📊 Статистика сервера - Пользователи: ${users.size}, Активные: ${activeUsers}, Сокеты: ${io.engine.clientsCount}`);
-}, 30000);
+}, 5000);
 
 module.exports = server;
 
@@ -624,7 +653,7 @@ if (require.main === module) {
     Object.entries(cryptoData).forEach(([symbol, data]) => {
       console.log(`   ${symbol}: $${data.price.toFixed(4)} - ${data.fullName}`);
     });
-    console.log('📊 Доступны страницы: /wallet.html, /trading-*.html, /deposit.html, /withdraw.html');
-    console.log('🔌 WebSocket подключения активны для реального времени');
+    console.log('💳 Интегрированные платежи: CryptoBot');
+    console.log('👛 Кошельки для вывода настроены');
   });
 }
