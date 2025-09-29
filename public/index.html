@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="css/reset.css" />
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/waterfall.css" />
+  
+  <!-- Telegram Web App Script -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
 <body>
@@ -24,28 +27,37 @@
   </div>
 
   <script>
+    // Функция для проверки Telegram Web App
+    function isTelegramWebApp() {
+      return window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData;
+    }
+
     function startApp() {
-      // Проверяем, находимся ли мы в Telegram Web App
-      if (window.Telegram && window.Telegram.WebApp) {
-        const tg = window.Telegram.WebApp;
-        
-        // Показываем loading страницу
+      if (isTelegramWebApp()) {
+        // В Telegram - переходим на loading
         window.location.href = 'loading.html';
       } else {
-        // Если не в Telegram, показываем сообщение
+        // Не в Telegram - показываем сообщение
         alert('Пожалуйста, откройте приложение через Telegram бота');
+        
+        // Для демо - все равно переходим
+        setTimeout(() => {
+          window.location.href = 'loading.html';
+        }, 1000);
       }
     }
     
-    // Автоматический запуск при загрузке, если в Telegram
+    // Автоматический запуск при загрузке в Telegram
     document.addEventListener('DOMContentLoaded', function() {
-      if (window.Telegram && window.Telegram.WebApp) {
+      if (isTelegramWebApp()) {
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
         
-        // Показываем кнопку
-        document.querySelector('.link-bottom').style.display = 'block';
+        // Автоматически запускаем приложение
+        setTimeout(() => {
+          startApp();
+        }, 500);
       }
     });
   </script>
