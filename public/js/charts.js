@@ -1,6 +1,11 @@
 class TradingChart {
   constructor(canvasId, crypto) {
     this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) {
+      console.error(`Canvas element with id '${canvasId}' not found`);
+      return;
+    }
+    
     this.ctx = this.canvas.getContext('2d');
     this.crypto = crypto;
     this.data = [];
@@ -12,120 +17,109 @@ class TradingChart {
   }
   
   init() {
+    if (!this.canvas) return;
+    
     this.resize();
     window.addEventListener('resize', () => this.resize());
     
-    // Обработчики для перемещения графика
+    // Обработчики для интерактивности
     this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
     this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
     this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
     this.canvas.addEventListener('wheel', this.onWheel.bind(this));
     
-    // Touch события для мобильных
+    // Touch события
     this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
     this.canvas.addEventListener('touchmove', this.onTouchMove.bind(this));
     this.canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
+    
+    console.log(`✅ TradingChart инициализирован для ${this.crypto}`);
   }
   
   resize() {
+    if (!this.canvas) return;
+    
     const container = this.canvas.parentElement;
+    if (!container) return;
+    
+    const displayStyle = window.getComputedStyle(this.canvas).display;
+    if (displayStyle === 'none') {
+      console.log(`Canvas ${this.crypto} скрыт, пропускаем resize`);
+      return;
+    }
+    
     this.canvas.width = container.clientWidth;
     this.canvas.height = container.clientHeight;
+    
+    console.log(`📏 Canvas ${this.crypto} resized to: ${this.canvas.width}x${this.canvas.height}`);
     this.draw();
   }
   
   updateData(newData) {
+    if (!newData || !Array.isArray(newData)) {
+      console.error('Invalid data provided to updateData');
+      return;
+    }
+    
     this.data = newData;
+    console.log(`📊 Data updated for ${this.crypto}: ${newData.length} points`);
     this.draw();
   }
   
   draw() {
+    if (!this.canvas || !this.ctx) {
+      console.error('Canvas or context not available');
+      return;
+    }
+    
     const { width, height } = this.canvas;
-    const ctx = this.ctx;
     
     // Очистка
-    ctx.clearRect(0, 0, width, height);
+    this.ctx.clearRect(0, 0, width, height);
     
-    if (this.data.length < 2) return;
-    
-    // Настройки
-    const padding = { top: 20, right: 40, bottom: 30, left: 50 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-    
-    // Данные для отображения (с учетом прокрутки)
-    const visibleData = this.getVisibleData();
-    if (visibleData.length < 2) return;
-    
-    const prices = visibleData.map(d => d.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const priceRange = maxPrice - minPrice || 1;
-    
-    // Сетка
-    this.drawGrid(padding, chartWidth, chartHeight, minPrice, maxPrice);
-    
-    // Линия графика
-    this.drawPriceLine(visibleData, padding, chartWidth, chartHeight, minPrice, priceRange);
-    
-    // Текущая цена
-    this.drawCurrentPrice(visibleData[visibleData.length - 1].price, padding, chartWidth);
-  }
-  
-  drawGrid(padding, chartWidth, chartHeight, minPrice, maxPrice) {
-    const ctx = this.ctx;
-    
-    ctx.strokeStyle = '#2a2e35';
-    ctx.lineWidth = 1;
-    ctx.fillStyle = '#b9c1d9';
-    ctx.font = '10px Poppins';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    
-    // Горизонтальные линии
-    const horizontalLines = 5;
-    for (let i = 0; i <= horizontalLines; i++) {
-      const y = padding.top + (i / horizontalLines) * chartHeight;
-      const price = maxPrice - (i / horizontalLines) * (maxPrice - minPrice);
-      
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(padding.left + chartWidth, y);
-      ctx.stroke();
-      
-      // Подписи цен
-      ctx.fillText(`$${price.toFixed(4)}`, padding.left - 5, y);
+    if (this.data.length < 2) {
+      this.drawNoData();
+      return;
     }
     
-    // Вертикальные линии (время)
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    
-    const visibleData = this.getVisibleData();
-    const timeStep = Math.max(1, Math.floor(visibleData.length / 6));
-    
-    for (let i = 0; i < visibleData.length; i += timeStep) {
-      const point = visibleData[i];
-      const x = padding.left + (i / (visibleData.length - 1)) * chartWidth;
+    try {
+      // Настройки
+      const padding = { top: 5, right: 5, bottom: 5, left: 5 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
       
-      ctx.beginPath();
-      ctx.moveTo(x, padding.top);
-      ctx.lineTo(x, padding.top + chartHeight);
-      ctx.stroke();
+      // Данные для отображения
+      const visibleData = this.getVisibleData();
+      if (visibleData.length < 2) {
+        this.drawNoData();
+        return;
+      }
       
-      // Подписи времени
-      const time = new Date(point.time);
-      const timeText = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
-      ctx.fillText(timeText, x, padding.top + chartHeight + 10);
+      const prices = visibleData.map(d => d.price);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const priceRange = maxPrice - minPrice || 1;
+      
+      // Рисуем график
+      this.drawChartLine(visibleData, padding, chartWidth, chartHeight, minPrice, priceRange);
+      
+    } catch (error) {
+      console.error('Error drawing chart:', error);
+      this.drawError();
     }
   }
   
-  drawPriceLine(visibleData, padding, chartWidth, chartHeight, minPrice, priceRange) {
+  drawChartLine(visibleData, padding, chartWidth, chartHeight, minPrice, priceRange) {
     const ctx = this.ctx;
     
     ctx.beginPath();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#00b15e';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    
+    // Определяем цвет графика
+    const isPositive = visibleData[visibleData.length - 1].price > visibleData[0].price;
+    ctx.strokeStyle = isPositive ? '#00b15e' : '#f6465d';
     
     visibleData.forEach((point, index) => {
       const x = padding.left + (index / (visibleData.length - 1)) * chartWidth;
@@ -140,54 +134,62 @@ class TradingChart {
     
     ctx.stroke();
     
-    // Заливка под графиком
-    ctx.globalAlpha = 0.1;
-    ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
-    ctx.lineTo(padding.left, padding.top + chartHeight);
-    ctx.closePath();
-    ctx.fillStyle = '#00b15e';
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    // Добавляем легкую заливку под графиком
+    if (visibleData.length > 1) {
+      const firstPoint = visibleData[0];
+      const lastPoint = visibleData[visibleData.length - 1];
+      
+      const firstX = padding.left;
+      const firstY = padding.top + chartHeight - ((firstPoint.price - minPrice) / priceRange) * chartHeight;
+      const lastX = padding.left + chartWidth;
+      const lastY = padding.top + chartHeight - ((lastPoint.price - minPrice) / priceRange) * chartHeight;
+      
+      ctx.globalAlpha = 0.1;
+      ctx.fillStyle = isPositive ? '#00b15e' : '#f6465d';
+      
+      ctx.beginPath();
+      ctx.moveTo(firstX, firstY);
+      
+      visibleData.forEach((point, index) => {
+        const x = padding.left + (index / (visibleData.length - 1)) * chartWidth;
+        const y = padding.top + chartHeight - ((point.price - minPrice) / priceRange) * chartHeight;
+        ctx.lineTo(x, y);
+      });
+      
+      ctx.lineTo(lastX, padding.top + chartHeight);
+      ctx.lineTo(firstX, padding.top + chartHeight);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.globalAlpha = 1.0;
+    }
   }
   
-  drawCurrentPrice(price, padding, chartWidth) {
+  drawNoData() {
     const ctx = this.ctx;
-    const y = this.getPriceY(price);
+    const { width, height } = this.canvas;
     
-    ctx.strokeStyle = '#00b15e';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 3]);
-    
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(padding.left + chartWidth, y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    
-    // Текст текущей цены
-    ctx.fillStyle = '#00b15e';
-    ctx.font = '12px Poppins';
-    ctx.textAlign = 'right';
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`$${price.toFixed(4)}`, padding.left + chartWidth + 35, y);
+    ctx.fillText('No data', width / 2, height / 2);
   }
   
-  getPriceY(price) {
-    const padding = { top: 20, bottom: 30 };
-    const chartHeight = this.canvas.height - padding.top - padding.bottom;
-    const visibleData = this.getVisibleData();
-    const prices = visibleData.map(d => d.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const priceRange = maxPrice - minPrice || 1;
+  drawError() {
+    const ctx = this.ctx;
+    const { width, height } = this.canvas;
     
-    return padding.top + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
+    ctx.fillStyle = '#f6465d';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Chart error', width / 2, height / 2);
   }
   
   getVisibleData() {
-    // Здесь можно добавить логику для отображения только части данных
-    // при прокрутке/зуме
-    return this.data.slice(-50); // Показываем последние 50 точек
+    // Для мини-графиков показываем последние 20 точек
+    return this.data.slice(-20);
   }
   
   // Обработчики событий для интерактивности
@@ -211,7 +213,7 @@ class TradingChart {
   
   onWheel(e) {
     e.preventDefault();
-    // Логика зума
+    // Логика зума может быть добавлена позже
     this.draw();
   }
   
@@ -232,5 +234,106 @@ class TradingChart {
   
   onTouchEnd() {
     this.isDragging = false;
+  }
+}
+
+// Функция для мини-графиков в кошельке
+class MiniChart {
+  static draw(canvasId, data) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+      console.log(`MiniChart: Canvas ${canvasId} not found`);
+      return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Очищаем canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    if (!data || data.length < 2) {
+      MiniChart.drawNoData(ctx, width, height);
+      return;
+    }
+    
+    try {
+      const prices = data.map(d => d.price);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const range = maxPrice - minPrice || 1;
+      
+      // Определяем цвет
+      const isPositive = prices[prices.length - 1] > prices[0];
+      ctx.strokeStyle = isPositive ? '#00b15e' : '#f6465d';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      
+      // Рисуем линию
+      ctx.beginPath();
+      
+      data.forEach((point, index) => {
+        const x = (index / (data.length - 1)) * width;
+        const y = height - ((point.price - minPrice) / range) * height;
+        
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      
+      ctx.stroke();
+      
+    } catch (error) {
+      console.error(`Error drawing mini chart ${canvasId}:`, error);
+      MiniChart.drawError(ctx, width, height);
+    }
+  }
+  
+  static drawNoData(ctx, width, height) {
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '8px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('---', width / 2, height / 2);
+  }
+  
+  static drawError(ctx, width, height) {
+    ctx.fillStyle = '#f6465d';
+    ctx.font = '8px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('err', width / 2, height / 2);
+  }
+}
+
+// Глобальные функции
+function initAllMiniCharts(marketData) {
+  if (!marketData || !marketData.history) {
+    console.error('No market data for mini charts');
+    return;
+  }
+  
+  const cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
+  
+  cryptos.forEach(crypto => {
+    const history = marketData.history[crypto];
+    if (history && history.length > 0) {
+      // Используем последние 20 точек для мини-графика
+      const chartData = history.slice(-20);
+      MiniChart.draw(`chart-${crypto}`, chartData);
+      console.log(`✅ Mini chart drawn for ${crypto}`);
+    } else {
+      console.log(`No history data for ${crypto}`);
+    }
+  });
+}
+
+function updateTradingChart(chartInstance, newData) {
+  if (chartInstance && chartInstance.updateData) {
+    chartInstance.updateData(newData);
   }
 }
