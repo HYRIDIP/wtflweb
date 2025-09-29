@@ -5,29 +5,22 @@ const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
 
-const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0'; // Важно для Docker
-
-
 const app = express();
 const server = http.createServer(app);
 
-// Для Render важно правильно настроить CORS
 const io = socketIo(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"],
-    credentials: true
+    methods: ["GET", "POST"]
   }
 });
 
-// Статические файлы
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Конфигурация для Render
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+// Конфигурация CryptoBot
+const CRYPTO_BOT_TOKEN = process.env.CRYPTO_BOT_TOKEN || 'your_cryptobot_token';
+const CRYPTO_BOT_URL = 'https://pay.crypt.bot/api';
 
 // База данных в памяти
 let users = new Map();
@@ -88,13 +81,14 @@ function initializePriceHistory() {
   Object.keys(cryptoData).forEach(crypto => {
     const basePrice = cryptoData[crypto].price;
     for (let i = 100; i > 0; i--) {
-      const randomChange = (Math.random() - 0.5) * 0.02;
+      const randomChange = (Math.random() - 0.5) * 0.02; // 2% волатильность
       const newPrice = Math.max(0.0001, basePrice * (1 + randomChange));
       priceHistory[crypto].push({
-        time: now - (i * 60000),
+        time: now - (i * 60000), // 1 минута интервал
         price: newPrice
       });
     }
+    // Устанавливаем текущую цену как последнюю в истории
     cryptoData[crypto].price = priceHistory[crypto][priceHistory[crypto].length - 1].price;
   });
 }
@@ -109,7 +103,7 @@ function createUser(telegramData) {
     username: telegramData.username || `User${userId.slice(-4)}`,
     firstName: telegramData.first_name || '',
     lastName: telegramData.last_name || '',
-    photoUrl: telegramData.photo_url || '',
+    photoUrl: telegramData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
     balance: 0,
     crypto: { 
       MINT: 0, 
@@ -126,7 +120,7 @@ function createUser(telegramData) {
   };
   
   users.set(userId, user);
-  console.log(`✅ Новый пользователь: ${user.username} (ID: ${user.id})`);
+  console.log(`✅ Новый пользователь создан: ${user.username} (ID: ${user.id})`);
   return user;
 }
 
@@ -142,6 +136,7 @@ function getOrCreateUser(telegramData) {
   if (!user) {
     user = createUser(telegramData);
   } else {
+    // Обновляем время активности
     user.lastActive = new Date().toISOString();
     user.firstLogin = false;
     console.log(`🔁 Пользователь вошел: ${user.username} (ID: ${user.id})`);
@@ -159,19 +154,25 @@ function updateCryptoPrice(cryptoId) {
   const sellVolume = ordersForCrypto.sell.reduce((sum, order) => sum + order.amount, 0);
   
   if (buyVolume === 0 && sellVolume === 0) {
-    const randomChange = (Math.random() - 0.5) * 0.01;
+    // Если нет ордеров, добавляем небольшое случайное движение
+    const randomChange = (Math.random() - 0.5) * 0.01; // 1% случайное изменение
     currentData.price = Math.max(0.0001, currentData.price * (1 + randomChange));
   } else {
+    // Модель ценообразования на основе спроса/предложения
     const volumeRatio = (buyVolume - sellVolume) / (currentData.circulating || 1);
-    const priceChange = volumeRatio * 0.02;
+    const priceChange = volumeRatio * 0.02; // 2% максимальное изменение
+    
+    // Обновляем цену
     currentData.price = Math.max(0.0001, currentData.price * (1 + priceChange));
   }
   
+  // Добавляем в историю
   priceHistory[cryptoId].push({
     time: Date.now(),
     price: currentData.price
   });
   
+  // Ограничиваем историю
   if (priceHistory[cryptoId].length > 200) {
     priceHistory[cryptoId].shift();
   }
@@ -183,8 +184,9 @@ function updateCryptoPrice(cryptoId) {
 function processOrders(cryptoId) {
   const cryptoOrders = orders[cryptoId];
   
-  cryptoOrders.buy.sort((a, b) => b.price - a.price);
-  cryptoOrders.sell.sort((a, b) => a.price - b.price);
+  // Сортируем ордера
+  cryptoOrders.buy.sort((a, b) => b.price - a.price); // Покупки по убыванию цены
+  cryptoOrders.sell.sort((a, b) => a.price - b.price); // Продажи по возрастанию цены
   
   let trades = [];
   let changed = false;
@@ -194,8 +196,9 @@ function processOrders(cryptoId) {
     const bestSell = cryptoOrders.sell[0];
     
     if (bestBuy.price >= bestSell.price) {
+      // Находим совпадение - исполняем сделку
       const tradeAmount = Math.min(bestBuy.amount, bestSell.amount);
-      const tradePrice = bestSell.price;
+      const tradePrice = bestSell.price; // Исполняем по цене продавца
       
       const buyer = users.get(bestBuy.userId);
       const seller = users.get(bestSell.userId);
@@ -203,6 +206,7 @@ function processOrders(cryptoId) {
       if (buyer && seller) {
         const totalCost = tradeAmount * tradePrice;
         
+        // Исполняем сделку
         seller.crypto[cryptoId] = (seller.crypto[cryptoId] || 0) - tradeAmount;
         buyer.crypto[cryptoId] = (buyer.crypto[cryptoId] || 0) + tradeAmount;
         buyer.balance -= totalCost;
@@ -218,6 +222,7 @@ function processOrders(cryptoId) {
           timestamp: Date.now()
         });
         
+        // Отправляем уведомления
         io.to(bestBuy.userId).emit('orderExecuted', {
           crypto: cryptoId,
           type: 'buy',
@@ -234,6 +239,7 @@ function processOrders(cryptoId) {
           total: totalCost
         });
         
+        // Рассылаем всем о сделке
         io.emit('marketTrade', {
           crypto: cryptoId,
           amount: tradeAmount,
@@ -244,6 +250,7 @@ function processOrders(cryptoId) {
         changed = true;
       }
       
+      // Обновляем ордера
       bestBuy.amount -= tradeAmount;
       bestSell.amount -= tradeAmount;
       
@@ -256,6 +263,7 @@ function processOrders(cryptoId) {
   }
   
   if (changed) {
+    // Обновляем цену после сделок
     updateCryptoPrice(cryptoId);
   }
   
@@ -265,6 +273,8 @@ function processOrders(cryptoId) {
 // CryptoBot интеграция (упрощенная для демо)
 async function createCryptoBotInvoice(amount, userId) {
   try {
+    // Для демо просто возвращаем фиктивные данные
+    // В реальном приложении здесь будет вызов API CryptoBot
     const invoiceId = 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     
     return {
@@ -296,6 +306,7 @@ app.get('/wallet.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'wallet.html'));
 });
 
+// Маршруты для отдельных криптовалют
 app.get('/trading-MINT.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'trading-MINT.html'));
 });
@@ -352,32 +363,14 @@ app.get('/api/cryptos', (req, res) => {
   res.json(cryptoData);
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/users/count', (req, res) => {
   res.json({ 
-    status: 'OK', 
-    environment: NODE_ENV,
-    timestamp: new Date().toISOString(),
-    users: users.size,
-    cryptos: Object.keys(cryptoData).length,
-    memory: process.memoryUsage(),
-    uptime: process.uptime()
-  });
-});
-
-app.get('/api/stats', (req, res) => {
-  const activeUsers = Array.from(users.values()).filter(u => {
-    const lastActive = new Date(u.lastActive);
-    return (Date.now() - lastActive) < 5 * 60 * 1000;
-  }).length;
-  
-  res.json({
-    totalUsers: users.size,
-    activeUsers: activeUsers,
-    totalOrders: Object.values(orders).reduce((sum, cryptoOrders) => 
-      sum + cryptoOrders.buy.length + cryptoOrders.sell.length, 0
-    ),
-    serverUptime: process.uptime(),
-    nodeVersion: process.version
+    count: users.size,
+    users: Array.from(users.values()).map(u => ({
+      id: u.id,
+      username: u.username,
+      balance: u.balance
+    }))
   });
 });
 
@@ -432,10 +425,13 @@ app.post('/api/deposit/confirm', (req, res) => {
     return res.json({ success: false, error: 'Invoice not found' });
   }
   
+  // В реальном приложении здесь будет проверка статуса через CryptoBot API
+  // Для демо просто подтверждаем депозит
   user.balance += pendingDeposit.amount;
   user.totalInvested += pendingDeposit.amount;
   user.pendingDeposits.delete(invoiceId);
   
+  // Уведомляем пользователя через socket
   io.to(userId).emit('depositSuccess', {
     amount: pendingDeposit.amount,
     newBalance: user.balance
@@ -471,6 +467,7 @@ app.post('/api/withdraw', (req, res) => {
   const fee = amount * 0.03;
   const netAmount = amount - fee;
   
+  // Выполняем вывод
   user.balance -= amount;
   
   res.json({ 
@@ -507,23 +504,28 @@ app.post('/api/order/create', (req, res) => {
     timestamp: Date.now()
   };
   
+  // Проверка баланса
   if (type === 'buy') {
     const totalCost = order.amount * order.price;
     if (!user.balance || user.balance < totalCost) {
       return res.json({ success: false, error: 'Insufficient balance' });
     }
+    // Резервируем средства
     user.balance -= totalCost;
   } else if (type === 'sell') {
     if (!user.crypto[crypto] || user.crypto[crypto] < order.amount) {
       return res.json({ success: false, error: `Insufficient ${crypto} balance` });
     }
+    // Резервируем криптовалюту
     user.crypto[crypto] -= order.amount;
   } else {
     return res.json({ success: false, error: 'Invalid order type' });
   }
   
+  // Добавляем ордер
   orders[crypto][type].push(order);
   
+  // Обрабатываем ордера
   const trades = processOrders(crypto);
   
   res.json({ 
@@ -533,12 +535,14 @@ app.post('/api/order/create', (req, res) => {
     executed: trades.length > 0
   });
   
+  // Рассылаем обновления
   io.emit('marketUpdate', {
     crypto: crypto,
     price: cryptoData[crypto].price,
     orders: orders[crypto]
   });
   
+  // Обновляем данные пользователя
   io.to(userId).emit('userData', user);
 });
 
@@ -557,6 +561,7 @@ io.on('connection', (socket) => {
       socket.userId = user.id;
       socket.join(user.id);
       
+      // Отправляем данные пользователю
       socket.emit('userData', user);
       socket.emit('marketData', {
         prices: Object.fromEntries(
@@ -565,7 +570,7 @@ io.on('connection', (socket) => {
         history: priceHistory
       });
       
-      console.log(`👤 Пользователь ${user.username} присоединился`);
+      console.log(`👤 Пользователь ${user.username} присоединился к сессии`);
       
     } catch (error) {
       console.error('Error in socket join:', error);
@@ -580,12 +585,14 @@ io.on('connection', (socket) => {
 
 // Периодическое обновление цен
 setInterval(() => {
+  // Обновляем цены на основе активности
   Object.keys(cryptoData).forEach(crypto => {
-    if (Math.random() > 0.5) {
+    if (Math.random() > 0.5) { // 50% chance для естественного движения
       updateCryptoPrice(crypto);
     }
   });
   
+  // Рассылаем обновления всем подключенным клиентам
   if (io.engine.clientsCount > 0) {
     io.emit('marketData', {
       prices: Object.fromEntries(
@@ -594,29 +601,30 @@ setInterval(() => {
       history: priceHistory
     });
   }
-}, 5000);
+}, 5000); // Обновляем каждые 5 секунд
 
-// Graceful shutdown для Render
-process.on('SIGTERM', () => {
-  console.log('🔄 Получен SIGTERM, graceful shutdown...');
-  server.close(() => {
-    console.log('✅ Сервер остановлен');
-    process.exit(0);
+// Статистика сервера
+setInterval(() => {
+  const activeUsers = Array.from(users.values()).filter(u => {
+    const lastActive = new Date(u.lastActive);
+    const now = new Date();
+    return (now - lastActive) < 5 * 60 * 1000; // 5 минут
+  }).length;
+  
+  console.log(`📊 Статистика сервера - Пользователи: ${users.size}, Активные: ${activeUsers}, Сокеты: ${io.engine.clientsCount}`);
+}, 30000);
+
+module.exports = server;
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`🚀 WaterFall Trading Server запущен на порту ${PORT}`);
+    console.log('💰 Поддерживаемые криптовалюты:');
+    Object.entries(cryptoData).forEach(([symbol, data]) => {
+      console.log(`   ${symbol}: $${data.price.toFixed(4)} - ${data.fullName}`);
+    });
+    console.log('📊 Доступны страницы: /wallet.html, /trading-*.html, /deposit.html, /withdraw.html');
+    console.log('🔌 WebSocket подключения активны для реального времени');
   });
-});
-
-// Запуск сервера
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 WaterFall Trading Server запущен на порту ${PORT}`);
-  console.log(`🌍 Environment: ${NODE_ENV}`);
-  console.log('💰 Поддерживаемые криптовалюты:');
-  Object.entries(cryptoData).forEach(([symbol, data]) => {
-    console.log(`   ${symbol}: $${data.price.toFixed(4)} - ${data.fullName}`);
-  });
-  console.log('📊 Доступны страницы:');
-  console.log('   /, /wallet.html, /trading-*.html, /deposit.html, /withdraw.html');
-  console.log('🔌 WebSocket подключения активны');
-  console.log('🏥 Health check: /api/health');
-});
-
-module.exports = app;
+}
