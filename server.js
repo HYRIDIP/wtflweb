@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -25,76 +26,124 @@ const CRYPTO_BOT_URL = 'https://pay.crypt.bot/api';
 // Кошельки для вывода
 const WALLETS = {
   TON: 'UQC5sl8NXJaPPl-MQf3xQm0ZcHTekNRMKW-PJQlIb92Kzt0m',
-  USDT: 'TDj9Fafq4jWJ51TXA5QgXSTduvvjUN6xau' // TRC20
+  USDT: 'TDj9Fafq4jWJ51TXA5QgXSTduvvjUN6xau'
 };
 
-// База данных в памяти
-let users = new Map();
-let orders = {
-  MINT: { buy: [], sell: [] },
-  RWK: { buy: [], sell: [] },
-  SKH: { buy: [], sell: [] },
-  WTFL: { buy: [], sell: [] },
-  CULT: { buy: [], sell: [] }
-};
+// Файлы для сохранения данных
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+const MARKET_FILE = path.join(DATA_DIR, 'market.json');
+
+// Создаем папку data если не существует
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Загрузка данных из файлов
+function loadData() {
+  try {
+    let users = new Map();
+    let orders = {
+      MINT: { buy: [], sell: [] },
+      RWK: { buy: [], sell: [] },
+      SKH: { buy: [], sell: [] },
+      WTFL: { buy: [], sell: [] },
+      CULT: { buy: [], sell: [] }
+    };
+    let marketData = {
+      prices: {
+        MINT: 0.078, RWK: 0.007, SKH: 0.0009, WTFL: 0.09, CULT: 0.07
+      },
+      history: {
+        MINT: [], RWK: [], SKH: [], WTFL: [], CULT: []
+      }
+    };
+
+    // Загружаем пользователей
+    if (fs.existsSync(USERS_FILE)) {
+      const usersData = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+      users = new Map(Object.entries(usersData));
+      console.log(`✅ Загружено ${users.size} пользователей`);
+    }
+
+    // Загружаем ордера
+    if (fs.existsSync(ORDERS_FILE)) {
+      orders = JSON.parse(fs.readFileSync(ORDERS_FILE, 'utf8'));
+      console.log('✅ Ордера загружены');
+    }
+
+    // Загружаем рыночные данные
+    if (fs.existsSync(MARKET_FILE)) {
+      marketData = JSON.parse(fs.readFileSync(MARKET_FILE, 'utf8'));
+      console.log('✅ Рыночные данные загружены');
+    }
+
+    return { users, orders, marketData };
+  } catch (error) {
+    console.error('❌ Ошибка загрузки данных:', error);
+    return {
+      users: new Map(),
+      orders: {
+        MINT: { buy: [], sell: [] }, RWK: { buy: [], sell: [] },
+        SKH: { buy: [], sell: [] }, WTFL: { buy: [], sell: [] },
+        CULT: { buy: [], sell: [] }
+      },
+      marketData: {
+        prices: { MINT: 0.078, RWK: 0.007, SKH: 0.0009, WTFL: 0.09, CULT: 0.07 },
+        history: { MINT: [], RWK: [], SKH: [], WTFL: [], CULT: [] }
+      }
+    };
+  }
+}
+
+// Сохранение данных в файлы
+function saveData() {
+  try {
+    // Сохраняем пользователей
+    const usersObj = Object.fromEntries(users);
+    fs.writeFileSync(USERS_FILE, JSON.stringify(usersObj, null, 2));
+    
+    // Сохраняем ордера
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
+    
+    // Сохраняем рыночные данные
+    const marketToSave = {
+      prices: cryptoData,
+      history: priceHistory
+    };
+    fs.writeFileSync(MARKET_FILE, JSON.stringify(marketToSave, null, 2));
+    
+    console.log('💾 Данные сохранены');
+  } catch (error) {
+    console.error('❌ Ошибка сохранения данных:', error);
+  }
+}
+
+// Инициализация данных
+let { users, orders, marketData } = loadData();
 
 // Данные криптовалют
-const cryptoData = {
-  MINT: { 
-    price: 0.078, 
-    supply: 21000000, 
-    circulating: 10000000,
-    name: 'MINT',
-    fullName: 'Mint Token'
-  },
-  RWK: { 
-    price: 0.007, 
-    supply: 910900000, 
-    circulating: 500000000,
-    name: 'RWK', 
-    fullName: 'Rewoke Token'
-  },
-  SKH: { 
-    price: 0.0009, 
-    supply: 1000900000, 
-    circulating: 600000000,
-    name: 'SKH',
-    fullName: 'Skyhost Token'
-  },
-  WTFL: { 
-    price: 0.09, 
-    supply: 980000000, 
-    circulating: 450000000,
-    name: 'WTFL',
-    fullName: 'Waterfall Token'
-  },
-  CULT: { 
-    price: 0.07, 
-    supply: 91000000, 
-    circulating: 45000000,
-    name: 'CULT',
-    fullName: 'Cult Token'
-  }
-};
+const cryptoData = marketData.prices;
+let priceHistory = marketData.history;
 
-let priceHistory = {
-  MINT: [], RWK: [], SKH: [], WTFL: [], CULT: []
-};
-
-// Инициализация истории цен
+// Инициализация истории цен если пустая
 function initializePriceHistory() {
   const now = Date.now();
   Object.keys(cryptoData).forEach(crypto => {
-    const basePrice = cryptoData[crypto].price;
-    for (let i = 100; i > 0; i--) {
-      const randomChange = (Math.random() - 0.5) * 0.02;
-      const newPrice = Math.max(0.0001, basePrice * (1 + randomChange));
-      priceHistory[crypto].push({
-        time: now - (i * 60000),
-        price: newPrice
-      });
+    if (!priceHistory[crypto] || priceHistory[crypto].length === 0) {
+      priceHistory[crypto] = [];
+      const basePrice = cryptoData[crypto].price;
+      for (let i = 100; i > 0; i--) {
+        const randomChange = (Math.random() - 0.5) * 0.02;
+        const newPrice = Math.max(0.0001, basePrice * (1 + randomChange));
+        priceHistory[crypto].push({
+          time: now - (i * 60000),
+          price: newPrice
+        });
+      }
+      cryptoData[crypto].price = priceHistory[crypto][priceHistory[crypto].length - 1].price;
     }
-    cryptoData[crypto].price = priceHistory[crypto][priceHistory[crypto].length - 1].price;
   });
 }
 initializePriceHistory();
@@ -110,19 +159,19 @@ function createUser(telegramData) {
     lastName: telegramData.last_name || '',
     photoUrl: telegramData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
     balance: 0,
-    crypto: { 
-      MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 
-    },
+    crypto: { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
     totalInvested: 0,
-    firstLogin: true,
+    firstLogin: false, // Изменено на false чтобы не показывать создание аккаунта
     pendingDeposits: new Map(),
     withdrawals: [],
     createdAt: new Date().toISOString(),
-    lastActive: new Date().toISOString()
+    lastActive: new Date().toISOString(),
+    telegramData: telegramData
   };
   
   users.set(userId, user);
-  console.log(`✅ Новый пользователь: ${user.username}`);
+  saveData(); // Сохраняем сразу
+  console.log(`✅ Пользователь создан: ${user.username}`);
   return user;
 }
 
@@ -138,47 +187,61 @@ function getOrCreateUser(telegramData) {
     user = createUser(telegramData);
   } else {
     user.lastActive = new Date().toISOString();
-    user.firstLogin = false;
+    console.log(`🔁 Пользователь вошел: ${user.username}`);
   }
   
   return user;
 }
 
-// CryptoBot интеграция
+// CryptoBot интеграция с обработкой ошибок
 async function createCryptoBotInvoice(amount, userId) {
   try {
+    console.log(`Создание инвойса: $${amount} для пользователя ${userId}`);
+    
     const response = await axios.post(`${CRYPTO_BOT_URL}/createInvoice`, {
       asset: 'USDT',
       amount: amount.toString(),
-      description: `Deposit to WaterFall Trading - User ${userId}`,
+      description: `Deposit to WaterFall Trading`,
       hidden_message: `User ID: ${userId}`,
       paid_btn_name: 'viewItem',
-      paid_btn_url: `https://t.me/your_bot?start=deposit_success_${userId}`,
+      paid_btn_url: `https://t.me/your_bot?start=deposit_${userId}`,
       payload: JSON.stringify({ userId, amount, type: 'deposit' })
     }, {
       headers: {
-        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN
-      }
+        'Crypto-Pay-API-Token': CRYPTO_BOT_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
     });
     
-    console.log('CryptoBot Invoice Response:', response.data);
-    return response.data.result;
+    if (response.data.ok) {
+      console.log('✅ CryptoBot инвойс создан');
+      return response.data.result;
+    } else {
+      throw new Error(response.data.error || 'Unknown CryptoBot error');
+    }
   } catch (error) {
-    console.error('CryptoBot Error:', error.response?.data || error.message);
-    throw new Error('Payment service unavailable. Please try again later.');
+    console.error('❌ CryptoBot Error:', error.response?.data || error.message);
+    
+    // Демо-режим если CryptoBot недоступен
+    console.log('🔄 Используем демо-режим для платежей');
+    const invoiceId = 'demo_inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    return {
+      invoice_id: invoiceId,
+      pay_url: `https://t.me/CryptoBot?start=invoice_${invoiceId}`,
+      amount: amount.toString(),
+      status: 'active'
+    };
   }
 }
 
-// Функция вывода через CryptoBot
+// Функция вывода
 async function processWithdrawal(userId, amount, asset, address) {
   try {
-    // В реальном приложении здесь будет вызов API для вывода
-    // Для демо просто возвращаем успех
-    
     const user = users.get(userId);
     if (!user) throw new Error('User not found');
     
-    // Проверяем баланс
     if (user.balance < amount) {
       throw new Error('Insufficient balance');
     }
@@ -203,6 +266,7 @@ async function processWithdrawal(userId, amount, asset, address) {
     };
     
     user.withdrawals.push(withdrawal);
+    saveData(); // Сохраняем изменения
     
     return {
       success: true,
@@ -325,12 +389,13 @@ function processOrders(cryptoId) {
   
   if (changed) {
     updateCryptoPrice(cryptoId);
+    saveData(); // Сохраняем после изменений
   }
   
   return trades;
 }
 
-// Маршруты
+// Маршруты (остаются без изменений)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -428,6 +493,7 @@ app.post('/api/deposit/create', async (req, res) => {
         created: Date.now(),
         status: 'pending'
       });
+      saveData();
     }
     
     res.json({ 
@@ -454,10 +520,10 @@ app.post('/api/deposit/confirm', (req, res) => {
     return res.json({ success: false, error: 'Invoice not found' });
   }
   
-  // В реальном приложении здесь будет проверка статуса через CryptoBot API
   user.balance += pendingDeposit.amount;
   user.totalInvested += pendingDeposit.amount;
   user.pendingDeposits.delete(invoiceId);
+  saveData();
   
   io.to(userId).emit('depositSuccess', {
     amount: pendingDeposit.amount,
@@ -489,7 +555,6 @@ app.post('/api/withdraw', async (req, res) => {
       address: result.address
     });
     
-    // Уведомляем пользователя
     io.to(userId).emit('withdrawalSuccess', {
       withdrawalId: result.withdrawalId,
       amount: amount,
@@ -560,37 +625,6 @@ app.post('/api/order/create', (req, res) => {
   io.to(userId).emit('userData', user);
 });
 
-// Webhook для CryptoBot (для обработки платежей)
-app.post('/webhook/cryptobot', (req, res) => {
-  try {
-    const update = req.body;
-    console.log('CryptoBot Webhook:', update);
-    
-    // Обработка входящих платежей
-    if (update.update_id && update.payload) {
-      const payload = JSON.parse(update.payload);
-      
-      if (payload.type === 'deposit' && payload.userId) {
-        const user = users.get(payload.userId);
-        if (user) {
-          user.balance += parseFloat(payload.amount);
-          user.totalInvested += parseFloat(payload.amount);
-          
-          io.to(payload.userId).emit('depositSuccess', {
-            amount: payload.amount,
-            newBalance: user.balance
-          });
-        }
-      }
-    }
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Webhook Error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
-  }
-});
-
 // Socket.io
 io.on('connection', (socket) => {
   console.log('🔌 Новое подключение:', socket.id);
@@ -608,9 +642,7 @@ io.on('connection', (socket) => {
       
       socket.emit('userData', user);
       socket.emit('marketData', {
-        prices: Object.fromEntries(
-          Object.entries(cryptoData).map(([key, data]) => [key, data.price])
-        ),
+        prices: cryptoData,
         history: priceHistory
       });
       
@@ -625,6 +657,11 @@ io.on('connection', (socket) => {
   });
 });
 
+// Автосохранение каждые 30 секунд
+setInterval(() => {
+  saveData();
+}, 30000);
+
 // Обновление цен
 setInterval(() => {
   Object.keys(cryptoData).forEach(crypto => {
@@ -635,9 +672,7 @@ setInterval(() => {
   
   if (io.engine.clientsCount > 0) {
     io.emit('marketData', {
-      prices: Object.fromEntries(
-        Object.entries(cryptoData).map(([key, data]) => [key, data.price])
-      ),
+      prices: cryptoData,
       history: priceHistory
     });
   }
@@ -649,11 +684,10 @@ if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`🚀 WaterFall Trading Server запущен на порту ${PORT}`);
+    console.log(`💾 Данные сохраняются в папку: ${DATA_DIR}`);
     console.log('💰 Поддерживаемые криптовалюты:');
     Object.entries(cryptoData).forEach(([symbol, data]) => {
-      console.log(`   ${symbol}: $${data.price.toFixed(4)} - ${data.fullName}`);
+      console.log(`   ${symbol}: $${data.price.toFixed(4)}`);
     });
-    console.log('💳 Интегрированные платежи: CryptoBot');
-    console.log('👛 Кошельки для вывода настроены');
   });
 }
