@@ -1,0 +1,3 @@
+NODE_ENV=production
+PORT=3000
+CRYPTO_BOT_TOKEN=your_cryptobot_token_here

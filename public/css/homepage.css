@@ -1,0 +1,564 @@
+body {
+	background-color: #070707;
+	padding: 30px 11px 71px 11px;
+	--minContent: 375;
+}
+
+.btn-btc-icon {
+	position: absolute; top: 0; left: 0; 
+	width: 48px;
+	display: flex;
+	justify-content: center;
+	color: #fff;
+	font-size: 20px;
+	font-family: 'Bounded';
+	font-style: normal;
+	font-weight: 400;
+	letter-spacing: 0px;
+	text-align: center;
+	background-color: #212125;
+	padding: 0 7px;
+	border-radius: 6px;
+	--minContent: 48;
+	--hSizing: FIXED;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.subtitle-ww {
+	color: #fff;
+	text-align: center;
+	--minContent: 353;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.unsplash-p-at-a8xe {
+	margin-left: 13px; margin-top: -3px;
+	width: 48px;
+	flex-shrink: 0;
+	align-self: start;
+	--minContent: 61;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.subtitle3 {
+	margin: 7px 13px 0 13px;
+	color: #fff;
+	--minContent: 353;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.col {
+	position: relative;
+	margin-left: 6px; margin-top: -5px;
+	width: 288px;
+	display: flex;
+	flex-direction: column;
+	align-self: center;
+	padding-top: 7px;
+	padding-bottom: 5px;
+	--minContent: 294;
+	--hSizing: FIXED;
+	--vSizing: HUG;
+	--pConstraintHorizontal: CENTER;
+}
+
+._41ca9ee3-3484-49e {
+	position: absolute; top: 0; left: 0; right: 0; 
+	rotate: -180deg;
+	transform-origin: 50% 50%;
+	filter: blur(44px);
+	width: 100%;
+	--minContent: 187;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.card {
+	position: relative; z-index: 1;
+	margin-left: -29px; margin-right: -23px;
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	background: url(../assets/homepage/card.png) center / cover no-repeat;
+	padding: 27px 10px 32px 10px;
+	border-radius: 10px;
+	--minContent: 288;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+}
+
+.card-text-current {
+	width: 100%;
+	align-self: center;
+	color: #fff;
+	font-size: 16px;
+	font-family: 'Bounded';
+	font-weight: 400;
+	--minContent: 320;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.card-row-bottom {
+	margin-right: 73px;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding-left: 1px;
+	--minContent: 218;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+}
+
+.card-subtitle {
+	color: #fff;
+	font-size: 24px;
+	font-family: 'Bounded';
+	font-weight: 400;
+	letter-spacing: 1.43px;
+	--minContent: 83;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.card-the-difference {
+	margin-top: 6px;
+	width: 62px; height: 18px;
+	display: flex;
+	gap: 5px;
+	flex-shrink: 0;
+	color: #04d298;
+	font-size: 14.82px;
+	font-family: 'Inter';
+	font-weight: 700;
+	padding: 0 2px;
+	--minContent: 62;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.card-arrow-up {
+	width: 8px; height: 46%;
+	flex-shrink: 0;
+	align-self: center;
+	--minContent: 8;
+	--hSizing: FIXED;
+	--vSizing: FILL;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: SCALE;
+}
+
+.card-text {
+	align-self: start;
+	--minContent: 42;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.row {
+	margin: 7px 13px 0 15px;
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	color: #fff;
+	font-size: 16px;
+	font-family: 'Poppins';
+	font-weight: 400;
+	line-height: 1.125;
+	--minContent: 353;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+}
+
+.btn1 {
+	margin-top: 1px;
+	width: 154px;
+	flex-shrink: 0;
+}
+
+.btn2 {
+	width: 156px;
+	flex-shrink: 0;
+}
+
+.subtitle-holdering {
+	margin: 40px 13px 0 13px;
+	color: #fff;
+	font-size: 20px;
+	font-family: 'Bounded';
+	font-weight: 400;
+	line-height: 1;
+	--minContent: 353;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.group1 {
+	position: relative;
+	margin: 28px 13px 0 13px;
+	height: 52px;
+	flex-shrink: 0;
+	font-family: 'Poppins';
+	--minContent: 26;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.text-50-mint {
+	position: absolute; top: 28px; right: 0; 
+	--minContent: 41;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text1 {
+	position: absolute; top: 0; right: 2px; 
+	--minContent: 39;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-eth {
+	position: absolute; top: 29px; left: 18%; 
+	width: 12%;
+	--minContent: 40;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.text-ethereum {
+	position: absolute; top: 8px; left: 18%; 
+	width: 26%;
+	--minContent: 85;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.btn-eth-icon {
+	position: absolute; top: 6px; left: 0; 
+	backdrop-filter: blur(6.5px);
+	justify-content: center;
+	text-align: center;
+	background-color: rgba(255, 255, 255, 0.1);
+	padding-top: 10px;
+	padding-bottom: 10px;
+	--minContent: 48;
+	--hSizing: FIXED;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.graph-eth1 {
+	position: absolute; top: 9px; left: 162px; 
+	width: 67px; height: 27px;
+	--minContent: 67;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.group2 {
+	position: relative;
+	margin: 29px 12px 0 13px;
+	height: 47px;
+	flex-shrink: 0;
+	font-family: 'Poppins';
+	--minContent: 25;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.text2 {
+	position: absolute; top: 3px; right: 0; 
+	--minContent: 51;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-2-05-wtfl {
+	position: absolute; top: 28px; right: 1px; 
+	--minContent: 50;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-btc1 {
+	position: absolute; top: 25px; left: 19%; 
+	width: 25%;
+	--minContent: 82;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.text-bitcoin1 {
+	position: absolute; top: 3px; left: 19%; 
+	width: 22%;
+	--minContent: 71;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.btn-bitcoin-logo {
+	position: absolute; top: 0; left: 0; 
+	justify-content: center;
+	text-align: center;
+	--minContent: 48;
+	--hSizing: FIXED;
+	--vSizing: HUG;
+}
+
+.graph-btc1 {
+	position: absolute; top: 13px; left: 163px; 
+	width: 68px; height: 20px;
+	--minContent: 68;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.group3 {
+	position: relative;
+	margin: 30px 10px 0 13px;
+	height: 48px;
+	flex-shrink: 0;
+	font-family: 'Poppins';
+	--minContent: 23;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.graph-eth2 {
+	position: absolute; top: 9px; left: 164px; 
+	width: 67px; height: 27px;
+	--minContent: 67;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.text3 {
+	position: absolute; top: 1px; right: 0; 
+	--minContent: 52;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-2-05-skh {
+	position: absolute; top: 28px; right: 3px; 
+	--minContent: 44;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-btc2 {
+	position: absolute; top: 25px; left: 19%; 
+	width: 22%;
+	--minContent: 71;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.text-bitcoin2 {
+	position: absolute; top: 3px; left: 19%; 
+	width: 22%;
+	--minContent: 71;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.btn-btc-icon1 {
+	padding-top: 12px;
+	padding-bottom: 8px;
+}
+
+.group4 {
+	position: relative;
+	margin: 29px 10px 0 13px;
+	height: 48px;
+	flex-shrink: 0;
+	font-family: 'Poppins';
+	--minContent: 23;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.graph-eth3 {
+	position: absolute; top: 9px; left: 164px; 
+	width: 67px; height: 27px;
+	--minContent: 67;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}
+
+.text4 {
+	position: absolute; top: 1px; right: 0; 
+	--minContent: 53;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-2-05-rwk {
+	position: absolute; top: 25px; right: 3px; 
+	--minContent: 47;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-btc3 {
+	position: absolute; top: 25px; left: 19%; 
+	width: 18%;
+	--minContent: 60;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.text-bitcoin3 {
+	position: absolute; top: 3px; left: 19%; 
+	width: 22%;
+	--minContent: 71;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.btn-btc-icon2 {
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+
+.group-bottom {
+	position: relative;
+	margin: 29px 10px 0 13px;
+	height: 47px;
+	flex-shrink: 0;
+	font-family: 'Poppins';
+	--minContent: 23;
+	--hSizing: FILL;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.text5 {
+	position: absolute; top: 1px; right: 0; 
+	--minContent: 60;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-2-05-cult {
+	position: absolute; top: 28px; right: 1px; 
+	--minContent: 49;
+	--hSizing: HUG;
+	--vSizing: HUG;
+	--pConstraintHorizontal: MAX;
+	--pConstraintVertical: MIN;
+}
+
+.text-btc4 {
+	position: absolute; top: 25px; left: 19%; 
+	width: 12%;
+	--minContent: 40;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.text-bitcoin4 {
+	position: absolute; top: 3px; left: 19%; 
+	width: 22%;
+	--minContent: 71;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: SCALE;
+	--pConstraintVertical: MIN;
+}
+
+.btn-btc-icon3 {
+	padding-top: 11px;
+	padding-bottom: 9px;
+}
+
+.graph-btc2 {
+	position: absolute; top: 13px; left: 163px; 
+	width: 68px; height: 20px;
+	--minContent: 68;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: MIN;
+	--pConstraintVertical: MIN;
+}

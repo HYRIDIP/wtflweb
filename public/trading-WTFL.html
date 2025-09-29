@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Inter:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/trading.css" />
+</head>
+
+<body>
+  <div class="trading-container">
+    <header class="trading-header">
+      <button class="back-btn" onclick="app.showWallet()">←</button>
+      <div class="crypto-info">
+        <h1 class="crypto-name">WTFL</h1>
+        <p id="cryptoPrice" class="crypto-price">$0.0900</p>
+      </div>
+      <div class="header-actions">
+        <button class="refresh-btn" onclick="tradingManager.refreshData()">↻</button>
+      </div>
+    </header>
+
+    <div class="chart-container">
+      <canvas id="tradingChart"></canvas>
+    </div>
+
+    <div class="order-book">
+      <div class="order-book-section">
+        <h3 class="section-title">Buy Orders</h3>
+        <div id="buyOrders" class="orders-list"></div>
+      </div>
+      
+      <div class="current-price">
+        <span id="currentPriceDisplay">$0.0900</span>
+      </div>
+      
+      <div class="order-book-section">
+        <h3 class="section-title">Sell Orders</h3>
+        <div id="sellOrders" class="orders-list"></div>
+      </div>
+    </div>
+
+    <div class="trading-form">
+      <div class="form-tabs">
+        <button class="tab-btn active" data-tab="limit">Limit Order</button>
+        <button class="tab-btn" data-tab="market">Market Order</button>
+      </div>
+
+      <div id="limitForm" class="order-form active">
+        <div class="input-group">
+          <label>Price (USD)</label>
+          <input type="number" id="limitPrice" step="0.0001" placeholder="0.0900" value="0.0900">
+        </div>
+        
+        <div class="input-group">
+          <label>Amount (WTFL)</label>
+          <input type="number" id="limitAmount" step="0.001" placeholder="0.000">
+        </div>
+        
+        <div class="order-summary">
+          <div class="summary-item">
+            <span>Total Cost:</span>
+            <span id="limitTotal">$0.00</span>
+          </div>
+        </div>
+        
+        <div class="order-buttons">
+          <button class="buy-btn" onclick="placeOrder('buy', 'limit')">Buy WTFL</button>
+          <button class="sell-btn" onclick="placeOrder('sell', 'limit')">Sell WTFL</button>
+        </div>
+      </div>
+
+      <div id="marketForm" class="order-form">
+        <div class="input-group">
+          <label>Amount (WTFL)</label>
+          <input type="number" id="marketAmount" step="0.001" placeholder="0.000">
+        </div>
+        
+        <div class="order-summary">
+          <div class="summary-item">
+            <span>Estimated Cost:</span>
+            <span id="marketTotal">$0.00</span>
+          </div>
+        </div>
+        
+        <div class="order-buttons">
+          <button class="buy-btn" onclick="placeOrder('buy', 'market')">Buy WTFL</button>
+          <button class="sell-btn" onclick="placeOrder('sell', 'market')">Sell WTFL</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="user-balance">
+      <div class="balance-item">
+        <span>USD Balance:</span>
+        <span id="usdBalance">$0.00</span>
+      </div>
+      <div class="balance-item">
+        <span>WTFL Balance:</span>
+        <span id="cryptoBalance">0.000</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/trading.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# render.yaml
+services:
+  - type: web
+    name: waterfall-trading
+    env: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /api/health

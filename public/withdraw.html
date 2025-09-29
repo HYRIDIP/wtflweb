@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Inter:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/withdraw.css" />
+</head>
+
+<body>
+  <div class="container">
+    <header class="header">
+      <button class="back-btn" onclick="app.showWallet()">← Back</button>
+      <h1 class="title">Withdraw Funds</h1>
+    </header>
+
+    <div class="balance-card">
+      <div class="balance-info">
+        <p class="balance-label">Available Balance</p>
+        <h2 id="availableBalance" class="balance-amount">$0.00</h2>
+      </div>
+    </div>
+
+    <div class="withdraw-form">
+      <div class="input-group">
+        <label for="withdrawAmount" class="input-label">Amount to Withdraw (USD)</label>
+        <div class="input-with-presets">
+          <input 
+            type="number" 
+            id="withdrawAmount" 
+            class="amount-input" 
+            placeholder="0.00" 
+            min="5" 
+            step="0.01"
+          >
+          <div class="preset-buttons">
+            <button class="preset-btn" data-amount="10">$10</button>
+            <button class="preset-btn" data-amount="25">$25</button>
+            <button class="preset-btn" data-amount="50">$50</button>
+            <button class="preset-btn" data-amount="100">$100</button>
+          </div>
+        </div>
+        <p class="input-hint">Minimum withdrawal: $5</p>
+      </div>
+
+      <div class="input-group">
+        <label for="withdrawAddress" class="input-label">Withdrawal Address</label>
+        <input 
+          type="text" 
+          id="withdrawAddress" 
+          class="address-input" 
+          placeholder="Enter your wallet address"
+        >
+        <p class="input-hint">Make sure the address is correct</p>
+      </div>
+
+      <div class="withdraw-methods">
+        <h3 class="methods-title">Withdrawal Method</h3>
+        
+        <div class="method-option active" data-method="usdt">
+          <div class="method-info">
+            <div class="method-icon">💵</div>
+            <div class="method-details">
+              <h4 class="method-name">USDT (TRC-20)</h4>
+              <p class="method-desc">Tether on TRON network</p>
+            </div>
+          </div>
+          <div class="method-check">✓</div>
+        </div>
+
+        <div class="method-option" data-method="ton">
+          <div class="method-info">
+            <div class="method-icon">⚡</div>
+            <div class="method-details">
+              <h4 class="method-name">TON</h4>
+              <p class="method-desc">The Open Network</p>
+            </div>
+          </div>
+          <div class="method-check"></div>
+        </div>
+
+        <div class="method-option" data-method="btc">
+          <div class="method-info">
+            <div class="method-icon">₿</div>
+            <div class="method-details">
+              <h4 class="method-name">Bitcoin</h4>
+              <p class="method-desc">Bitcoin network</p>
+            </div>
+          </div>
+          <div class="method-check"></div>
+        </div>
+      </div>
+
+      <div class="withdraw-info">
+        <div class="info-item">
+          <span class="info-label">Withdrawal Amount:</span>
+          <span id="withdrawNetAmount" class="info-value">$0.00</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Processing Fee (3%):</span>
+          <span id="withdrawFee" class="info-value">$0.00</span>
+        </div>
+        <div class="info-item total">
+          <span class="info-label">You Will Receive:</span>
+          <span id="withdrawTotal" class="info-value">$0.00</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Processing Time:</span>
+          <span class="info-value">1-24 hours</span>
+        </div>
+      </div>
+
+      <button id="withdrawBtn" class="withdraw-button">Confirm Withdrawal</button>
+    </div>
+
+    <div id="confirmationSection" class="confirmation-section hidden">
+      <h3 class="confirmation-title">Confirm Withdrawal</h3>
+      
+      <div class="confirmation-details">
+        <div class="detail-item">
+          <span class="detail-label">Amount:</span>
+          <span id="confirmAmount" class="detail-value">$0.00</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Fee:</span>
+          <span id="confirmFee" class="detail-value">$0.00</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">You Receive:</span>
+          <span id="confirmNet" class="detail-value">$0.00</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">To Address:</span>
+          <span id="confirmAddress" class="detail-value address">...</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Network:</span>
+          <span id="confirmNetwork" class="detail-value">USDT (TRC-20)</span>
+        </div>
+      </div>
+
+      <div class="confirmation-warning">
+        <div class="warning-icon">⚠️</div>
+        <p class="warning-text">
+          Please double-check the withdrawal address. Transactions cannot be reversed.
+        </p>
+      </div>
+
+      <div class="confirmation-buttons">
+        <button class="confirm-btn" onclick="processWithdrawal()">Confirm & Withdraw</button>
+        <button class="cancel-btn" onclick="hideConfirmation()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/withdraw.js"></script>
+</body>
+</html>

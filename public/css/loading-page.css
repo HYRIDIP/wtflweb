@@ -1,0 +1,41 @@
+body {
+	gap: 60px;
+	color: #fff;
+	font-size: 24px;
+	font-family: 'Bounded';
+	text-align: center;
+	background-color: #000;
+	padding-top: 54px;
+	padding-bottom: 345px;
+	--minContent: 390;
+}
+
+.subtitle-waterfall {
+	margin: 0 12px;
+	--minContent: 390;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+	--pConstraintVertical: MIN;
+}
+
+.col-bottom {
+	align-items: center;
+	background-image: url(../assets/loading-page/col.png);
+	padding-top: 89px;
+	padding-bottom: 116px;
+	--minContent: 174;
+	--hSizing: FILL;
+	--vSizing: HUG;
+	--pConstraintHorizontal: STRETCH;
+}
+
+.loading-v {
+	width: 150px;
+	flex-shrink: 0;
+	--minContent: 150;
+	--hSizing: FIXED;
+	--vSizing: FIXED;
+	--pConstraintHorizontal: CENTER;
+	--pConstraintVertical: MIN;
+}

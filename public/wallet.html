@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Inter:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/homepage.css" />
+</head>
+
+<body>
+  <h2 class="subtitle-ww subtitle2">ww</h2>
+  <img id="userAvatar" src="" class="unsplash-p-at-a8xe input" />
+  <h2 id="userName" class="subtitle3 subtitle1">Hello username</h2>
+  
+  <div class="col">
+    <img src="assets/homepage/_41ca9ee3-3484-49e.png" class="_41ca9ee3-3484-49e" />
+    
+    <div class="card">
+      <p class="card-text-current">Current Balance</p>
+      
+      <div class="card-row-bottom">
+        <h2 id="userBalance" class="card-subtitle">$0.00</h2>
+        
+        <div class="card-the-difference">
+          <object data="assets/homepage/card-arrow-up.svg" class="card-arrow-up input" type="image/svg+xml"></object>
+          <p class="card-text">0%</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row">
+    <button class="btn-a btn1 hover-bright" onclick="app.showDeposit()">Deposit</button>
+    <button class="btn-b btn2 hover-zoom" onclick="app.showWithdraw()">Withdraw</button>
+  </div>
+  
+  <h2 class="subtitle-holdering">holdering</h2>
+  
+  <!-- MINT -->
+  <div class="group1" onclick="app.showTradingPage('MINT')">
+    <div id="holding-MINT">
+      <p class="text-50-mint text-gray2">0 MINT</p>
+      <p class="text1 text-white1">$0.00</p>
+    </div>
+    <p class="text-eth text-gray3">MINT</p>
+    <p class="text-ethereum text-white1">$MINT</p>
+    <button class="btn-eth-icon btn-dark hover-dark text-white2">M</button>
+    <canvas id="chart-MINT" width="67" height="27"></canvas>
+  </div>
+  
+  <!-- WTFL -->
+  <div class="group2" onclick="app.showTradingPage('WTFL')">
+    <div id="holding-WTFL">
+      <p class="text2 text-white1">$0.00</p>
+      <p class="text-2-05-wtfl text-gray2">0 WTFL</p>
+    </div>
+    <p class="text-btc1 text-gray3">WATERFALL</p>
+    <p class="text-bitcoin1 text-white1">$WTFL</p>
+    <button class="btn-bitcoin-logo text-white2 btn-dark hover-bright">W</button>
+    <canvas id="chart-WTFL" width="68" height="20"></canvas>
+  </div>
+  
+  <!-- SKH -->
+  <div class="group3" onclick="app.showTradingPage('SKH')">
+    <canvas id="chart-SKH" width="67" height="27"></canvas>
+    <div id="holding-SKH">
+      <p class="text3 text-white1">$0.00</p>
+      <p class="text-2-05-skh text-gray2">0 SKH</p>
+    </div>
+    <p class="text-btc2 text-gray3">SKYHOST</p>
+    <p class="text-bitcoin2 text-white1">$SKH</p>
+    <button class="btn-btc-icon btn-btc-icon1 hover-bright">S</button>
+  </div>
+  
+  <!-- RWK -->
+  <div class="group4" onclick="app.showTradingPage('RWK')">
+    <canvas id="chart-RWK" width="67" height="27"></canvas>
+    <div id="holding-RWK">
+      <p class="text4 text-white1">$0.00</p>
+      <p class="text-2-05-rwk text-gray2">0 RWK</p>
+    </div>
+    <p class="text-btc3 text-gray3">REWOKE</p>
+    <p class="text-bitcoin3 text-white1">$RWK</p>
+    <button class="btn-btc-icon btn-btc-icon2 hover-bright">R</button>
+  </div>
+  
+  <!-- CULT -->
+  <div class="group-bottom" onclick="app.showTradingPage('CULT')">
+    <div id="holding-CULT">
+      <p class="text5 text-white1">$0.00</p>
+      <p class="text-2-05-cult text-gray2">0 CULT</p>
+    </div>
+    <p class="text-btc4 text-gray3">CULT</p>
+    <p class="text-bitcoin4 text-white1">$CULT</p>
+    <button class="btn-btc-icon btn-btc-icon3 hover-bright">C</button>
+    <canvas id="chart-CULT" width="68" height="20"></canvas>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  
+  <style>
+    .text-profit {
+      color: #00b15e;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    
+    .text-loss {
+      color: #f6465d;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    
+    .price-up {
+      color: #00b15e;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .price-down {
+      color: #f6465d;
+      font-size: 12px;
+      font-weight: 600;
+    }
+  </style>
+</body>
+</html>
