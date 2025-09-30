@@ -70,7 +70,7 @@ class WaterFallApp {
           return result;
         } catch (error) {
           console.error(`API Error (${endpoint}):`, error);
-          throw error;
+          throw new Error(`Сетевая ошибка: ${error.message}`);
         }
       },
       
@@ -233,8 +233,15 @@ class WaterFallApp {
       
       console.log('🔌 Подключение к серверу...');
       
-      // Подключаем Socket.io
-      this.socket = io();
+      // Подключаем Socket.io с обработкой ошибок
+      const socketUrl = window.location.origin;
+      this.socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+      });
+      
       this.setupSocketHandlers();
       
       // Отправляем данные пользователя на сервер
@@ -250,7 +257,14 @@ class WaterFallApp {
         trades: this.currentUser.trades
       };
       
-      this.socket.emit('join', userDataToSend);
+      // Ждем подключения перед отправкой
+      if (this.socket.connected) {
+        this.socket.emit('join', userDataToSend);
+      } else {
+        this.socket.once('connect', () => {
+          this.socket.emit('join', userDataToSend);
+        });
+      }
       
       console.log('✅ Запрос на подключение отправлен');
       
@@ -942,6 +956,32 @@ document.addEventListener('DOMContentLoaded', () => {
     .trade-time {
       color: #6c757d;
       font-size: 12px;
+    }
+    
+    .price-up {
+      color: #00b15e;
+      font-size: 12px;
+    }
+    
+    .price-down {
+      color: #f6465d;
+      font-size: 12px;
+    }
+    
+    .text-profit {
+      color: #00b15e;
+    }
+    
+    .text-loss {
+      color: #f6465d;
+    }
+    
+    .text-white1 {
+      color: white;
+    }
+    
+    .text-gray2 {
+      color: #6c757d;
     }
   `;
   document.head.appendChild(style);
