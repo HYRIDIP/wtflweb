@@ -8,6 +8,7 @@ class WaterFallApp {
     this.isTelegram = false;
     this.isInitialized = false;
     this.chartManager = null;
+    this.api = null;
     
     this.init();
   }
@@ -15,6 +16,9 @@ class WaterFallApp {
   async init() {
     try {
       console.log('🚀 Инициализация WaterFall App...');
+      
+      // Инициализируем API
+      this.initAPI();
       
       // Сначала загружаем пользователя
       await this.initUser();
@@ -38,6 +42,55 @@ class WaterFallApp {
       console.error('❌ Ошибка инициализации:', error);
       this.showNotification('Ошибка загрузки приложения', 'error');
     }
+  }
+  
+  initAPI() {
+    // Используем глобальный ServerAPI или создаем fallback
+    this.api = window.serverAPI || {
+      async request(endpoint, data = {}) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const result = await response.json();
+          
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          
+          return result;
+        } catch (error) {
+          console.error(`API Error (${endpoint}):`, error);
+          throw error;
+        }
+      },
+      
+      async createOrder(orderData) {
+        return this.request('/api/order/create', orderData);
+      },
+      
+      async createDeposit(depositData) {
+        return this.request('/api/deposit/create', depositData);
+      },
+      
+      async confirmDeposit(invoiceId) {
+        return this.request('/api/deposit/confirm', { invoiceId });
+      },
+      
+      async createWithdrawal(withdrawalData) {
+        return this.request('/api/withdraw', withdrawalData);
+      }
+    };
+    console.log('🔌 API клиент инициализирован');
   }
   
   async initTelegram() {
@@ -78,11 +131,14 @@ class WaterFallApp {
           console.log('👤 Пользователь загружен из localStorage:', this.currentUser.username);
           
           // Обновляем сообщение приветствия для существующих пользователей
-          const nameEl = document.getElementById('userName');
-          if (nameEl && !this.currentUser.firstLogin) {
-            const displayName = this.currentUser.firstName || this.currentUser.username || 'Трейдер';
-            nameEl.textContent = `С возвращением, ${displayName}!`;
-          }
+          setTimeout(() => {
+            const nameEl = document.getElementById('userName');
+            if (nameEl && !this.currentUser.firstLogin) {
+              const displayName = this.currentUser.firstName || this.currentUser.username || 'Трейдер';
+              nameEl.textContent = `С возвращением, ${displayName}!`;
+            }
+          }, 100);
+          
           return;
         } else {
           console.log('📅 Данные пользователя устарели, создаем новые');
@@ -190,7 +246,8 @@ class WaterFallApp {
         isRealUser: this.currentUser.isRealUser,
         balance: this.currentUser.balance,
         crypto: this.currentUser.crypto,
-        totalInvested: this.currentUser.totalInvested
+        totalInvested: this.currentUser.totalInvested,
+        trades: this.currentUser.trades
       };
       
       this.socket.emit('join', userDataToSend);
@@ -241,8 +298,15 @@ class WaterFallApp {
     this.socket.on('marketUpdate', (data) => {
       if (this.marketData && data.crypto) {
         this.marketData.prices[data.crypto] = data.price;
+        
+        // Обновляем историю если есть
+        if (data.history && this.marketData.history) {
+          this.marketData.history[data.crypto] = data.history;
+        }
+        
         this.updatePrices();
         this.updateHoldings();
+        this.updateCharts();
       }
     });
     
@@ -312,6 +376,7 @@ class WaterFallApp {
     
     this.socket.on('connect', () => {
       console.log('✅ Подключение к серверу установлено');
+      this.showNotification('Подключение к серверу установлено', 'success');
     });
     
     this.socket.on('disconnect', (reason) => {
@@ -325,6 +390,14 @@ class WaterFallApp {
       console.log('🔁 Переподключение к серверу');
       this.showNotification('Соединение восстановлено', 'success');
     });
+    
+    this.socket.on('reconnect_attempt', () => {
+      console.log('🔄 Попытка переподключения...');
+    });
+    
+    this.socket.on('reconnect_error', (error) => {
+      console.error('❌ Ошибка переподключения:', error);
+    });
   }
   
   initCharts() {
@@ -332,6 +405,10 @@ class WaterFallApp {
     if (window.ChartManager) {
       this.chartManager = new window.ChartManager();
       window.chartManager = this.chartManager;
+      console.log('📈 ChartManager инициализирован');
+    } else if (window.initChartManager) {
+      this.chartManager = window.initChartManager();
+      console.log('📈 ChartManager инициализирован через глобальную функцию');
     }
   }
   
@@ -345,6 +422,9 @@ class WaterFallApp {
     if (avatarEl) {
       if (this.currentUser.photoUrl) {
         avatarEl.src = this.currentUser.photoUrl;
+        avatarEl.onerror = () => {
+          avatarEl.src = '/assets/homepage/unsplash-p-at-a8xe.png';
+        };
       }
       avatarEl.style.display = 'block';
     }
@@ -382,7 +462,8 @@ class WaterFallApp {
     balanceSelectors.forEach(selector => {
       const elements = document.querySelectorAll(selector);
       elements.forEach(element => {
-        if (element.textContent.includes('$') || element.classList.contains('balance-amount')) {
+        if (element.textContent.includes('$') || element.classList.contains('balance-amount') || 
+            element.id.includes('Balance')) {
           element.textContent = `$${balance.toFixed(2)}`;
         }
       });
@@ -416,6 +497,19 @@ class WaterFallApp {
       const cryptoBalanceEl = document.getElementById('cryptoBalance');
       if (cryptoBalanceEl && window.location.pathname.includes('trading-')) {
         cryptoBalanceEl.textContent = amount.toFixed(4);
+      }
+      
+      // Обновляем цену криптовалюты в списке
+      const priceElement = document.getElementById(`price-${crypto}`);
+      if (priceElement) {
+        priceElement.innerHTML = `
+          $${price.toFixed(4)}
+          ${change !== 0 ? `
+            <span class="${change > 0 ? 'price-up' : 'price-down'}">
+              ${change > 0 ? '↗' : '↘'} ${Math.abs(change).toFixed(1)}%
+            </span>
+          ` : ''}
+        `;
       }
     });
   }
@@ -582,6 +676,10 @@ class WaterFallApp {
     window.location.href = 'wallet.html';
   }
   
+  showHome() {
+    window.location.href = 'index.html';
+  }
+  
   // Уведомления
   showNotification(message, type = 'info') {
     console.log(`📢 Уведомление [${type}]:`, message);
@@ -598,66 +696,81 @@ class WaterFallApp {
       }
     } else {
       // Fallback для браузера
-      const notification = document.createElement('div');
-      notification.className = `notification ${type}`;
-      notification.innerHTML = `
-        <div class="notification-content">
-          <span class="notification-message">${message}</span>
-          <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
-        </div>
-      `;
-      
-      document.body.appendChild(notification);
-      
-      // Автоматическое удаление через 5 секунд
-      setTimeout(() => {
-        if (notification.parentElement) {
-          notification.remove();
-        }
-      }, 5000);
+      this.showBrowserNotification(message, type);
     }
+  }
+  
+  showBrowserNotification(message, type = 'info') {
+    // Создаем контейнер для уведомлений если его нет
+    let container = document.getElementById('notification-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'notification-container';
+      container.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        max-width: 400px;
+      `;
+      document.body.appendChild(container);
+    }
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.style.cssText = `
+      background: #1e2329;
+      border-left: 4px solid ${type === 'error' ? '#f6465d' : type === 'warning' ? '#f0b90b' : '#00b15e'};
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideInRight 0.3s ease-out;
+      max-width: 400px;
+      word-wrap: break-word;
+    `;
+    
+    notification.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>${message}</span>
+        <button onclick="this.parentElement.parentElement.remove()" style="
+          background: none;
+          border: none;
+          color: white;
+          font-size: 18px;
+          cursor: pointer;
+          padding: 0;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-left: 10px;
+        ">×</button>
+      </div>
+    `;
+    
+    container.appendChild(notification);
+    
+    // Автоматическое удаление через 5 секунд
+    setTimeout(() => {
+      if (notification.parentElement) {
+        notification.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => notification.remove(), 300);
+      }
+    }, 5000);
   }
   
   // API вызовы
-  async apiCall(endpoint, data) {
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...data,
-          userId: this.currentUser?.id,
-          timestamp: Date.now()
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error(`❌ API Error (${endpoint}):`, error);
-      throw new Error(`Сетевая ошибка: ${error.message}`);
-    }
-  }
-  
   async createOrder(crypto, type, price, amount) {
     try {
-      const result = await this.apiCall('/api/order/create', {
+      const result = await this.api.createOrder({
         crypto: crypto,
         type: type,
         price: parseFloat(price),
-        amount: parseFloat(amount)
+        amount: parseFloat(amount),
+        userId: this.currentUser?.id
       });
       
       if (result.success) {
@@ -675,8 +788,9 @@ class WaterFallApp {
   
   async createDeposit(amount) {
     try {
-      const result = await this.apiCall('/api/deposit/create', {
-        amount: parseFloat(amount)
+      const result = await this.api.createDeposit({
+        amount: parseFloat(amount),
+        userId: this.currentUser?.id
       });
       
       if (result.success) {
@@ -709,9 +823,7 @@ class WaterFallApp {
   
   async confirmDeposit(invoiceId) {
     try {
-      const result = await this.apiCall('/api/deposit/confirm', {
-        invoiceId: invoiceId
-      });
+      const result = await this.api.confirmDeposit(invoiceId);
       
       if (result.success) {
         this.showNotification(`✅ Депозит $${result.amount} подтвержден!`, 'success');
@@ -728,10 +840,11 @@ class WaterFallApp {
   
   async createWithdrawal(amount, address, method = 'USDT') {
     try {
-      const result = await this.apiCall('/api/withdraw', {
+      const result = await this.api.createWithdrawal({
         amount: parseFloat(amount),
         address: address,
-        method: method
+        method: method,
+        userId: this.currentUser?.id
       });
       
       if (result.success) {
@@ -746,6 +859,25 @@ class WaterFallApp {
       return null;
     }
   }
+  
+  // Вспомогательные методы
+  formatCurrency(amount) {
+    return `$${parseFloat(amount).toFixed(2)}`;
+  }
+  
+  formatCrypto(amount, decimals = 4) {
+    return parseFloat(amount).toFixed(decimals);
+  }
+  
+  // Очистка ресурсов
+  destroy() {
+    if (this.socket) {
+      this.socket.disconnect();
+    }
+    if (this.chartManager) {
+      this.chartManager.destroyAll();
+    }
+  }
 }
 
 // Глобальная инициализация
@@ -753,6 +885,66 @@ let app;
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('📄 DOM загружен, инициализация приложения...');
+  
+  // Добавляем CSS анимации для уведомлений
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    
+    @keyframes slideOutRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+    
+    .trade-item {
+      padding: 10px;
+      border-bottom: 1px solid #2a2e35;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .trade-item.buy .trade-type {
+      color: #00b15e;
+    }
+    
+    .trade-item.sell .trade-type {
+      color: #f6465d;
+    }
+    
+    .trade-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    
+    .trade-details {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .trade-time {
+      color: #6c757d;
+      font-size: 12px;
+    }
+  `;
+  document.head.appendChild(style);
   
   // Пытаемся загрузить сохраненные рыночные данные
   const savedMarketData = localStorage.getItem('waterfallMarketData');
@@ -813,70 +1005,66 @@ function goToWallet() {
   }
 }
 
-// Стили для уведомлений
-const notificationStyles = `
-  .notification {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 10000;
-    min-width: 300px;
-    max-width: 500px;
-    background: #1e2329;
-    border-left: 4px solid #00b15e;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    animation: slideIn 0.3s ease-out;
+function goToHome() {
+  if (window.app && window.app.showHome) {
+    window.app.showHome();
+  } else {
+    window.location.href = 'index.html';
   }
-  
-  .notification.error {
-    border-left-color: #f6465d;
-  }
-  
-  .notification.warning {
-    border-left-color: #f0b90b;
-  }
-  
-  .notification-content {
-    padding: 12px 16px;
-    display: flex;
-    justify-content: between;
-    align-items: center;
-    color: white;
-  }
-  
-  .notification-message {
-    flex: 1;
-    margin-right: 10px;
-  }
-  
-  .notification-close {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 18px;
-    cursor: pointer;
-    padding: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-`;
+}
 
-// Добавляем стили в документ
-const styleSheet = document.createElement('style');
-styleSheet.textContent = notificationStyles;
-document.head.appendChild(styleSheet);
+// Глобальные функции для торговли
+function placeBuyOrder() {
+  if (!window.app) return;
+  
+  const crypto = getCurrentCrypto();
+  const priceInput = document.getElementById('buyPrice');
+  const amountInput = document.getElementById('buyAmount');
+  
+  if (!priceInput || !amountInput) return;
+  
+  const price = parseFloat(priceInput.value);
+  const amount = parseFloat(amountInput.value);
+  
+  if (!price || !amount) {
+    window.app.showNotification('Введите цену и количество', 'error');
+    return;
+  }
+  
+  window.app.createOrder(crypto, 'buy', price, amount);
+}
+
+function placeSellOrder() {
+  if (!window.app) return;
+  
+  const crypto = getCurrentCrypto();
+  const priceInput = document.getElementById('sellPrice');
+  const amountInput = document.getElementById('sellAmount');
+  
+  if (!priceInput || !amountInput) return;
+  
+  const price = parseFloat(priceInput.value);
+  const amount = parseFloat(amountInput.value);
+  
+  if (!price || !amount) {
+    window.app.showNotification('Введите цену и количество', 'error');
+    return;
+  }
+  
+  window.app.createOrder(crypto, 'sell', price, amount);
+}
+
+function getCurrentCrypto() {
+  const path = window.location.pathname;
+  if (path.includes('trading-')) {
+    return path.split('trading-')[1].replace('.html', '');
+  }
+  return 'MINT'; // fallback
+}
+
+// Обработка перед закрытием страницы
+window.addEventListener('beforeunload', () => {
+  if (window.app) {
+    window.app.destroy();
+  }
+});
