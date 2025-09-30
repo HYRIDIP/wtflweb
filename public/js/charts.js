@@ -12,6 +12,7 @@ class TradingChart {
     this.isDragging = false;
     this.startX = 0;
     this.scrollOffset = 0;
+    this.isInitialized = false;
     
     this.init();
   }
@@ -20,20 +21,31 @@ class TradingChart {
     if (!this.canvas) return;
     
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    
+    // Откладываем добавление обработчиков до первого взаимодействия
+    this.setupEventListeners();
+    
+    this.isInitialized = true;
+    console.log(`✅ TradingChart инициализирован для ${this.crypto}`);
+  }
+  
+  setupEventListeners() {
+    // Используем passive events для лучшей производительности
+    const options = { passive: true };
+    
+    window.addEventListener('resize', () => this.resize(), options);
     
     // Обработчики для интерактивности
     this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
     this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
     this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
-    this.canvas.addEventListener('wheel', this.onWheel.bind(this));
+    this.canvas.addEventListener('mouseleave', this.onMouseUp.bind(this));
+    this.canvas.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
     
     // Touch события
-    this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
-    this.canvas.addEventListener('touchmove', this.onTouchMove.bind(this));
-    this.canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
-    
-    console.log(`✅ TradingChart инициализирован для ${this.crypto}`);
+    this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this), options);
+    this.canvas.addEventListener('touchmove', this.onTouchMove.bind(this), options);
+    this.canvas.addEventListener('touchend', this.onTouchEnd.bind(this), options);
   }
   
   resize() {
@@ -48,11 +60,18 @@ class TradingChart {
       return;
     }
     
+    // Сохраняем текущие размеры для проверки
+    const oldWidth = this.canvas.width;
+    const oldHeight = this.canvas.height;
+    
     this.canvas.width = container.clientWidth;
     this.canvas.height = container.clientHeight;
     
-    console.log(`📏 Canvas ${this.crypto} resized to: ${this.canvas.width}x${this.canvas.height}`);
-    this.draw();
+    // Перерисовываем только если размеры изменились
+    if (oldWidth !== this.canvas.width || oldHeight !== this.canvas.height) {
+      console.log(`📏 Canvas ${this.crypto} resized to: ${this.canvas.width}x${this.canvas.height}`);
+      this.draw();
+    }
   }
   
   updateData(newData) {
@@ -63,7 +82,11 @@ class TradingChart {
     
     this.data = newData;
     console.log(`📊 Data updated for ${this.crypto}: ${newData.length} points`);
-    this.draw();
+    
+    // Используем requestAnimationFrame для плавной отрисовки
+    if (this.data.length > 0) {
+      requestAnimationFrame(() => this.draw());
+    }
   }
   
   draw() {
@@ -189,7 +212,8 @@ class TradingChart {
   
   getVisibleData() {
     // Для мини-графиков показываем последние 20 точек
-    return this.data.slice(-20);
+    const startIndex = Math.max(0, this.data.length - 20);
+    return this.data.slice(startIndex);
   }
   
   // Обработчики событий для интерактивности
@@ -197,6 +221,7 @@ class TradingChart {
     this.isDragging = true;
     this.startX = e.clientX;
     this.scrollOffset = 0;
+    this.canvas.style.cursor = 'grabbing';
   }
   
   onMouseMove(e) {
@@ -204,11 +229,17 @@ class TradingChart {
     
     const deltaX = e.clientX - this.startX;
     this.scrollOffset = deltaX;
-    this.draw();
+    
+    // Ограничиваем частоту перерисовки
+    if (!this._lastDraw || Date.now() - this._lastDraw > 16) {
+      this.draw();
+      this._lastDraw = Date.now();
+    }
   }
   
   onMouseUp() {
     this.isDragging = false;
+    this.canvas.style.cursor = 'default';
   }
   
   onWheel(e) {
@@ -218,35 +249,95 @@ class TradingChart {
   }
   
   onTouchStart(e) {
-    e.preventDefault();
-    this.isDragging = true;
-    this.startX = e.touches[0].clientX;
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      this.isDragging = true;
+      this.startX = e.touches[0].clientX;
+    }
   }
   
   onTouchMove(e) {
-    if (!this.isDragging) return;
+    if (!this.isDragging || e.touches.length !== 1) return;
     e.preventDefault();
     
     const deltaX = e.touches[0].clientX - this.startX;
     this.scrollOffset = deltaX;
-    this.draw();
+    
+    if (!this._lastDraw || Date.now() - this._lastDraw > 16) {
+      this.draw();
+      this._lastDraw = Date.now();
+    }
   }
   
   onTouchEnd() {
     this.isDragging = false;
   }
+  
+  // Очистка ресурсов
+  destroy() {
+    if (this.canvas) {
+      // Удаляем все обработчики событий
+      const canvas = this.canvas;
+      canvas.removeEventListener('mousedown', this.onMouseDown);
+      canvas.removeEventListener('mousemove', this.onMouseMove);
+      canvas.removeEventListener('mouseup', this.onMouseUp);
+      canvas.removeEventListener('wheel', this.onWheel);
+      canvas.removeEventListener('touchstart', this.onTouchStart);
+      canvas.removeEventListener('touchmove', this.onTouchMove);
+      canvas.removeEventListener('touchend', this.onTouchEnd);
+    }
+    
+    window.removeEventListener('resize', this.resize);
+  }
 }
 
 // Функция для мини-графиков в кошельке
 class MiniChart {
-  static draw(canvasId, data) {
+  static instances = new Map();
+  
+  static init(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
       console.log(`MiniChart: Canvas ${canvasId} not found`);
-      return;
+      return null;
     }
     
-    const ctx = canvas.getContext('2d');
+    // Проверяем, есть ли уже экземпляр для этого canvas
+    if (this.instances.has(canvasId)) {
+      return this.instances.get(canvasId);
+    }
+    
+    const instance = {
+      canvas: canvas,
+      ctx: canvas.getContext('2d'),
+      data: [],
+      lastDataHash: ''
+    };
+    
+    this.instances.set(canvasId, instance);
+    return instance;
+  }
+  
+  static draw(canvasId, data) {
+    let instance = this.instances.get(canvasId);
+    if (!instance) {
+      instance = this.init(canvasId);
+    }
+    
+    if (!instance) return;
+    
+    const canvas = instance.canvas;
+    const ctx = instance.ctx;
+    
+    // Проверяем, изменились ли данные
+    const dataHash = JSON.stringify(data);
+    if (dataHash === instance.lastDataHash && instance.data.length > 0) {
+      return; // Данные не изменились, пропускаем перерисовку
+    }
+    
+    instance.data = data || [];
+    instance.lastDataHash = dataHash;
+    
     const width = canvas.width;
     const height = canvas.height;
     
@@ -308,6 +399,99 @@ class MiniChart {
     ctx.textBaseline = 'middle';
     ctx.fillText('err', width / 2, height / 2);
   }
+  
+  static updateAll(marketData) {
+    if (!marketData || !marketData.history) {
+      console.error('No market data for mini charts');
+      return;
+    }
+    
+    const cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
+    
+    cryptos.forEach(crypto => {
+      const history = marketData.history[crypto];
+      if (history && history.length > 0) {
+        // Используем последние 20 точек для мини-графика
+        const chartData = history.slice(-20);
+        this.draw(`chart-${crypto}`, chartData);
+      } else {
+        console.log(`No history data for ${crypto}`);
+        this.draw(`chart-${crypto}`, null);
+      }
+    });
+  }
+}
+
+// Chart Manager для управления всеми графиками
+class ChartManager {
+  constructor() {
+    this.charts = new Map();
+    this.miniChartsInitialized = false;
+    this.init();
+  }
+  
+  init() {
+    console.log('📈 ChartManager инициализирован');
+    this.initMiniCharts();
+  }
+  
+  initMiniCharts() {
+    if (this.miniChartsInitialized) return;
+    
+    const cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
+    
+    cryptos.forEach(crypto => {
+      MiniChart.init(`chart-${crypto}`);
+    });
+    
+    this.miniChartsInitialized = true;
+    console.log('✅ Мини-графики инициализированы');
+  }
+  
+  createTradingChart(canvasId, crypto) {
+    if (this.charts.has(canvasId)) {
+      return this.charts.get(canvasId);
+    }
+    
+    const chart = new TradingChart(canvasId, crypto);
+    this.charts.set(canvasId, chart);
+    return chart;
+  }
+  
+  updateAllCharts(marketData) {
+    if (!marketData) return;
+    
+    // Обновляем мини-графики
+    MiniChart.updateAll(marketData);
+    
+    // Обновляем торговые графики
+    this.charts.forEach((chart, canvasId) => {
+      const crypto = chart.crypto;
+      const history = marketData.history?.[crypto];
+      if (history && history.length > 0) {
+        chart.updateData(history);
+      }
+    });
+  }
+  
+  getChart(canvasId) {
+    return this.charts.get(canvasId);
+  }
+  
+  destroyChart(canvasId) {
+    const chart = this.charts.get(canvasId);
+    if (chart) {
+      chart.destroy();
+      this.charts.delete(canvasId);
+    }
+  }
+  
+  destroyAll() {
+    this.charts.forEach((chart, canvasId) => {
+      chart.destroy();
+    });
+    this.charts.clear();
+  }
 }
 
 // Глобальные функции
@@ -317,23 +501,43 @@ function initAllMiniCharts(marketData) {
     return;
   }
   
-  const cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
-  
-  cryptos.forEach(crypto => {
-    const history = marketData.history[crypto];
-    if (history && history.length > 0) {
-      // Используем последние 20 точек для мини-графика
-      const chartData = history.slice(-20);
-      MiniChart.draw(`chart-${crypto}`, chartData);
-      console.log(`✅ Mini chart drawn for ${crypto}`);
-    } else {
-      console.log(`No history data for ${crypto}`);
-    }
-  });
+  MiniChart.updateAll(marketData);
 }
 
 function updateTradingChart(chartInstance, newData) {
   if (chartInstance && chartInstance.updateData) {
     chartInstance.updateData(newData);
   }
+}
+
+function initChartManager() {
+  if (!window.chartManager) {
+    window.chartManager = new ChartManager();
+  }
+  return window.chartManager;
+}
+
+// Автоматическая инициализация при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('📈 Загрузка ChartManager...');
+  initChartManager();
+  
+  // Пытаемся обновить мини-графики если есть предзагруженные данные
+  if (window.preloadedMarketData) {
+    setTimeout(() => {
+      initAllMiniCharts(window.preloadedMarketData);
+    }, 100);
+  }
+});
+
+// Экспорты для использования в модулях
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    TradingChart,
+    MiniChart,
+    ChartManager,
+    initAllMiniCharts,
+    updateTradingChart,
+    initChartManager
+  };
 }
