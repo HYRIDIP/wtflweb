@@ -17,22 +17,11 @@ class WaterFallApp {
     try {
       console.log('🚀 Инициализация WaterFall App...');
       
-      // Инициализируем API
       this.initAPI();
-      
-      // Сначала загружаем пользователя
       await this.initUser();
-      
-      // Затем инициализируем Telegram
       await this.initTelegram();
-      
-      // Подключаемся к серверу
       await this.connectToServer();
-      
-      // Инициализируем графики
       this.initCharts();
-      
-      // Обновляем UI
       this.updateUI();
       
       this.isInitialized = true;
@@ -45,7 +34,6 @@ class WaterFallApp {
   }
   
   initAPI() {
-    // Используем глобальный ServerAPI или создаем fallback
     this.api = window.serverAPI || {
       async request(endpoint, data = {}) {
         try {
@@ -82,8 +70,8 @@ class WaterFallApp {
         return this.request('/api/deposit/create', depositData);
       },
       
-      async confirmDeposit(invoiceId) {
-        return this.request('/api/deposit/confirm', { invoiceId });
+      async confirmDeposit(confirmData) {
+        return this.request('/api/deposit/confirm', confirmData);
       },
       
       async createWithdrawal(withdrawalData) {
@@ -94,12 +82,10 @@ class WaterFallApp {
   }
   
   async initTelegram() {
-    // Проверяем наличие Telegram Web App
     if (window.Telegram && window.Telegram.WebApp) {
       this.tg = window.Telegram.WebApp;
       this.isTelegram = true;
       
-      // Инициализируем Telegram Web App
       this.tg.ready();
       this.tg.expand();
       this.tg.enableClosingConfirmation();
@@ -114,23 +100,19 @@ class WaterFallApp {
   }
   
   async initUser() {
-    // Пытаемся получить сохраненные данные пользователя
     const savedUserData = localStorage.getItem('waterfallUserData');
     
     if (savedUserData) {
       try {
         const userData = JSON.parse(savedUserData);
-        
-        // Проверяем актуальность данных (не старше 30 дней)
         const dataAge = Date.now() - (userData.lastSaved || 0);
-        const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 дней
+        const maxAge = 30 * 24 * 60 * 60 * 1000;
         
         if (dataAge < maxAge) {
           this.currentUser = userData;
           this.currentUser.lastLogin = Date.now();
           console.log('👤 Пользователь загружен из localStorage:', this.currentUser.username);
           
-          // Обновляем сообщение приветствия для существующих пользователей
           setTimeout(() => {
             const nameEl = document.getElementById('userName');
             if (nameEl && !this.currentUser.firstLogin) {
@@ -150,19 +132,15 @@ class WaterFallApp {
       }
     }
     
-    // Создаем нового пользователя
     if (this.isTelegram && this.tg?.initDataUnsafe?.user) {
-      // Пользователь из Telegram
       const telegramUser = this.tg.initDataUnsafe.user;
       this.currentUser = this.createTelegramUser(telegramUser);
       console.log('👤 Новый Telegram пользователь:', this.currentUser.username);
     } else {
-      // Демо-пользователь для браузера
       this.currentUser = this.createDemoUser();
       console.log('👤 Демо-пользователь создан:', this.currentUser.username);
     }
     
-    // Сохраняем пользователя
     this.saveUserData();
   }
   
@@ -175,7 +153,7 @@ class WaterFallApp {
       firstName: telegramData.first_name || '',
       lastName: telegramData.last_name || '',
       photoUrl: telegramData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
-      balance: 1000, // Начальный баланс
+      balance: 1000,
       crypto: { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
       totalInvested: 0,
       firstLogin: true,
@@ -183,7 +161,7 @@ class WaterFallApp {
       telegramData: telegramData,
       createdAt: Date.now(),
       lastLogin: Date.now(),
-      trades: [] // История сделок
+      trades: []
     };
   }
   
@@ -210,7 +188,7 @@ class WaterFallApp {
       telegramData: null,
       createdAt: Date.now(),
       lastLogin: Date.now(),
-      trades: [] // История сделок
+      trades: []
     };
   }
   
@@ -233,7 +211,6 @@ class WaterFallApp {
       
       console.log('🔌 Подключение к серверу...');
       
-      // Подключаем Socket.io с обработкой ошибок
       const socketUrl = window.location.origin;
       this.socket = io(socketUrl, {
         transports: ['websocket', 'polling'],
@@ -244,7 +221,6 @@ class WaterFallApp {
       
       this.setupSocketHandlers();
       
-      // Отправляем данные пользователя на сервер
       const userDataToSend = {
         id: this.currentUser.id,
         username: this.currentUser.username,
@@ -257,7 +233,6 @@ class WaterFallApp {
         trades: this.currentUser.trades
       };
       
-      // Ждем подключения перед отправкой
       if (this.socket.connected) {
         this.socket.emit('join', userDataToSend);
       } else {
@@ -279,17 +254,13 @@ class WaterFallApp {
       console.log('📨 Получены данные пользователя с сервера');
       
       if (serverUserData && serverUserData.id === this.currentUser.id) {
-        // Обновляем данные с сервера (баланс, крипто и т.д.)
         this.currentUser.balance = serverUserData.balance !== undefined ? serverUserData.balance : this.currentUser.balance;
         this.currentUser.crypto = serverUserData.crypto || this.currentUser.crypto;
         this.currentUser.totalInvested = serverUserData.totalInvested || this.currentUser.totalInvested;
         this.currentUser.firstLogin = serverUserData.firstLogin !== undefined ? serverUserData.firstLogin : this.currentUser.firstLogin;
         this.currentUser.trades = serverUserData.trades || this.currentUser.trades;
         
-        // Сохраняем обновленные данные
         this.saveUserData();
-        
-        // Обновляем интерфейс
         this.updateUI();
       }
     });
@@ -298,7 +269,6 @@ class WaterFallApp {
       console.log('📈 Получены рыночные данные');
       this.marketData = data;
       
-      // Сохраняем рыночные данные
       localStorage.setItem('waterfallMarketData', JSON.stringify({
         data: data,
         timestamp: Date.now()
@@ -313,7 +283,6 @@ class WaterFallApp {
       if (this.marketData && data.crypto) {
         this.marketData.prices[data.crypto] = data.price;
         
-        // Обновляем историю если есть
         if (data.history && this.marketData.history) {
           this.marketData.history[data.crypto] = data.history;
         }
@@ -330,7 +299,6 @@ class WaterFallApp {
         'success'
       );
       
-      // Обновляем локальные данные пользователя
       if (this.currentUser) {
         if (data.type === 'buy') {
           this.currentUser.balance -= data.amount * data.price;
@@ -340,7 +308,6 @@ class WaterFallApp {
           this.currentUser.crypto[data.crypto] = (this.currentUser.crypto[data.crypto] || 0) - data.amount;
         }
         
-        // Сохраняем сделку
         this.currentUser.trades.push({
           id: Date.now().toString(),
           crypto: data.crypto,
@@ -390,7 +357,6 @@ class WaterFallApp {
     
     this.socket.on('connect', () => {
       console.log('✅ Подключение к серверу установлено');
-      this.showNotification('Подключение к серверу установлено', 'success');
     });
     
     this.socket.on('disconnect', (reason) => {
@@ -404,18 +370,9 @@ class WaterFallApp {
       console.log('🔁 Переподключение к серверу');
       this.showNotification('Соединение восстановлено', 'success');
     });
-    
-    this.socket.on('reconnect_attempt', () => {
-      console.log('🔄 Попытка переподключения...');
-    });
-    
-    this.socket.on('reconnect_error', (error) => {
-      console.error('❌ Ошибка переподключения:', error);
-    });
   }
   
   initCharts() {
-    // Инициализируем ChartManager если он доступен
     if (window.ChartManager) {
       this.chartManager = new window.ChartManager();
       window.chartManager = this.chartManager;
@@ -431,7 +388,6 @@ class WaterFallApp {
     
     console.log('🎨 Обновление интерфейса...');
     
-    // Обновляем аватарку
     const avatarEl = document.getElementById('userAvatar');
     if (avatarEl) {
       if (this.currentUser.photoUrl) {
@@ -443,7 +399,6 @@ class WaterFallApp {
       avatarEl.style.display = 'block';
     }
     
-    // Обновляем имя пользователя
     const nameEl = document.getElementById('userName');
     if (nameEl) {
       const displayName = this.currentUser.firstName || this.currentUser.username || 'Трейдер';
@@ -452,18 +407,14 @@ class WaterFallApp {
         `С возвращением, ${displayName}!`;
     }
     
-    // Обновляем все элементы баланса
     this.updateBalance();
     this.updateHoldings();
-    
-    // Обновляем историю сделок если на странице торговли
     this.updateTradeHistory();
   }
   
   updateBalance() {
     const balance = this.currentUser.balance || 0;
     
-    // Обновляем все возможные элементы баланса
     const balanceSelectors = [
       '#userBalance',
       '#availableBalance', 
@@ -493,7 +444,6 @@ class WaterFallApp {
       const value = amount * price;
       const change = this.getPriceChange(crypto);
       
-      // Обновляем холдинги в кошельке
       const container = document.getElementById(`holding-${crypto}`);
       if (container) {
         container.innerHTML = `
@@ -507,13 +457,11 @@ class WaterFallApp {
         `;
       }
       
-      // Обновляем баланс криптовалюты на торговых страницах
       const cryptoBalanceEl = document.getElementById('cryptoBalance');
       if (cryptoBalanceEl && window.location.pathname.includes('trading-')) {
         cryptoBalanceEl.textContent = amount.toFixed(4);
       }
       
-      // Обновляем цену криптовалюты в списке
       const priceElement = document.getElementById(`price-${crypto}`);
       if (priceElement) {
         priceElement.innerHTML = `
@@ -560,14 +508,11 @@ class WaterFallApp {
   updateCharts() {
     if (!this.marketData) return;
     
-    // Используем ChartManager если доступен
     if (this.chartManager) {
       this.chartManager.updateAllCharts(this.marketData);
     } else if (window.initAllMiniCharts) {
-      // Используем глобальную функцию для мини-графиков
       window.initAllMiniCharts(this.marketData);
     } else {
-      // Fallback: рисуем базовые графики
       this.drawBasicCharts();
     }
   }
@@ -583,28 +528,21 @@ class WaterFallApp {
   
   drawMiniChart(canvasId, data) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-      console.log(`Canvas ${canvasId} not found`);
-      return;
-    }
+    if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
     
-    // Очищаем canvas
     ctx.clearRect(0, 0, width, height);
     
-    if (!data || data.length < 2) {
-      return;
-    }
+    if (!data || data.length < 2) return;
     
     const prices = data.map(d => d.price);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const range = maxPrice - minPrice || 1;
     
-    // Рисуем линию графика
     ctx.beginPath();
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
@@ -679,11 +617,11 @@ class WaterFallApp {
   }
   
   showDeposit() {
-    window.location.href = 'deposit.html';
+    this.showDepositModal();
   }
   
   showWithdraw() {
-    window.location.href = 'withdraw.html';
+    this.showWithdrawModal();
   }
   
   showWallet() {
@@ -692,6 +630,450 @@ class WaterFallApp {
   
   showHome() {
     window.location.href = 'index.html';
+  }
+  
+  // Депозит с выбором метода
+  async createDeposit(amount, method = 'CRYPTOPAY', asset = 'USDT') {
+    try {
+      const result = await this.api.createDeposit({
+        amount: parseFloat(amount),
+        userId: this.currentUser?.id,
+        method: method,
+        asset: asset
+      });
+      
+      if (result.success) {
+        if (method === 'CRYPTOPAY') {
+          if (this.tg && this.tg.openInvoice) {
+            this.tg.openInvoice(result.invoiceUrl, (status) => {
+              console.log('CryptoPay invoice status:', status);
+              if (status === 'paid') {
+                this.confirmCryptoPayDeposit(result.invoiceId);
+              } else if (status === 'failed' || status === 'cancelled') {
+                this.showNotification('Оплата отменена или не удалась', 'error');
+              }
+            });
+          } else {
+            window.open(result.invoiceUrl, '_blank', 'width=400,height=600');
+            this.showNotification('Откройте ссылку для завершения оплаты', 'info');
+          }
+        } else {
+          this.showPaymentAddress(method, result.address, amount);
+        }
+        
+        return result;
+      } else {
+        this.showNotification(`❌ ${result.error}`, 'error');
+        return null;
+      }
+    } catch (error) {
+      this.showNotification(`❌ ${error.message}`, 'error');
+      return null;
+    }
+  }
+  
+  async confirmCryptoPayDeposit(invoiceId) {
+    try {
+      const result = await this.api.confirmDeposit({
+        userId: this.currentUser?.id,
+        invoiceId: invoiceId
+      });
+      
+      if (result.success) {
+        this.showNotification(`✅ Депозит $${result.amount} подтвержден!`, 'success');
+        return true;
+      } else {
+        this.showNotification(`❌ ${result.error}`, 'error');
+        return false;
+      }
+    } catch (error) {
+      this.showNotification(`❌ ${error.message}`, 'error');
+      return false;
+    }
+  }
+  
+  showPaymentAddress(method, address, amount) {
+    const methodNames = {
+      'TRC20': 'USDT (TRC20)',
+      'TON': 'TON'
+    };
+    
+    const message = `
+💰 Для пополнения на $${amount}:
+
+Метод: ${methodNames[method] || method}
+Адрес: <code>${address}</code>
+
+После перевода средства поступят в течение 10-15 минут.
+    `;
+    
+    this.showNotification(message, 'info');
+    this.showPaymentModal(method, address, amount);
+  }
+  
+  showPaymentModal(method, address, amount) {
+    const methodNames = {
+      'TRC20': 'USDT (TRC20 Network)',
+      'TON': 'TON (TON Network)'
+    };
+    
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+      <div style="
+        background: #1e2329;
+        padding: 20px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+      ">
+        <h3 style="color: white; margin-bottom: 15px;">Пополнение $${amount}</h3>
+        <p style="color: #6c757d; margin-bottom: 15px;">${methodNames[method] || method}</p>
+        <div style="
+          background: white;
+          padding: 10px;
+          border-radius: 8px;
+          margin-bottom: 15px;
+          word-break: break-all;
+          font-family: monospace;
+          font-size: 12px;
+          color: black;
+        ">
+          ${address}
+        </div>
+        <button id="copyAddressBtn" style="
+          background: #00b15e;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 6px;
+          cursor: pointer;
+          margin-right: 10px;
+        ">
+          Скопировать адрес
+        </button>
+        <button id="closeModalBtn" style="
+          background: #6c757d;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 6px;
+          cursor: pointer;
+        ">
+          Закрыть
+        </button>
+        <p style="color: #6c757d; margin-top: 15px; font-size: 12px;">
+          Средства поступят после 1 подтверждения сети
+        </p>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Копирование адреса
+    modal.querySelector('#copyAddressBtn').addEventListener('click', () => {
+      navigator.clipboard.writeText(address).then(() => {
+        this.showNotification('Адрес скопирован в буфер обмена', 'success');
+      });
+    });
+    
+    // Закрытие модального окна
+    modal.querySelector('#closeModalBtn').addEventListener('click', () => {
+      modal.remove();
+    });
+    
+    // Закрытие по клику на фон
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+  
+  // Вывод средств
+  async createWithdrawal(amount, address, method = 'TRC20', asset = 'USDT') {
+    try {
+      const result = await this.api.createWithdrawal({
+        amount: parseFloat(amount),
+        address: address,
+        method: method,
+        asset: asset,
+        userId: this.currentUser?.id
+      });
+      
+      if (result.success) {
+        this.showNotification(`✅ Вывод $${result.netAmount} успешно обработан!`, 'success');
+        return result;
+      } else {
+        this.showNotification(`❌ ${result.error}`, 'error');
+        return null;
+      }
+    } catch (error) {
+      this.showNotification(`❌ ${error.message}`, 'error');
+      return null;
+    }
+  }
+  
+  // Модальное окно депозита
+  showDepositModal() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+      <div style="
+        background: #1e2329;
+        padding: 20px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+      ">
+        <h3 style="color: white; margin-bottom: 15px; text-align: center;">Пополнение счета</h3>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="color: #6c757d; display: block; margin-bottom: 5px;">Сумма ($)</label>
+          <input type="number" id="depositAmount" placeholder="Введите сумму" style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2e35;
+            background: #0c0e12;
+            color: white;
+            box-sizing: border-box;
+          ">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="color: #6c757d; display: block; margin-bottom: 5px;">Метод оплаты</label>
+          <select id="depositMethod" style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2e35;
+            background: #0c0e12;
+            color: white;
+            box-sizing: border-box;
+          ">
+            <option value="CRYPTOPAY">CryptoPay (USDT)</option>
+            <option value="TRC20">USDT (TRC20)</option>
+            <option value="TON">TON</option>
+          </select>
+        </div>
+        
+        <button id="confirmDepositBtn" style="
+          background: #00b15e;
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          width: 100%;
+          margin-bottom: 10px;
+        ">
+          Пополнить
+        </button>
+        
+        <button id="closeDepositModal" style="
+          background: #6c757d;
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          width: 100%;
+        ">
+          Отмена
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.querySelector('#confirmDepositBtn').addEventListener('click', () => {
+      const amount = parseFloat(modal.querySelector('#depositAmount').value);
+      const method = modal.querySelector('#depositMethod').value;
+      
+      if (!amount || amount < 10) {
+        this.showNotification('Минимальная сумма депозита: $10', 'error');
+        return;
+      }
+      
+      this.createDeposit(amount, method);
+      modal.remove();
+    });
+    
+    modal.querySelector('#closeDepositModal').addEventListener('click', () => {
+      modal.remove();
+    });
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+  
+  // Модальное окно вывода
+  showWithdrawModal() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+      <div style="
+        background: #1e2329;
+        padding: 20px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+      ">
+        <h3 style="color: white; margin-bottom: 15px; text-align: center;">Вывод средств</h3>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="color: #6c757d; display: block; margin-bottom: 5px;">Сумма ($)</label>
+          <input type="number" id="withdrawAmount" placeholder="Введите сумму" style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2e35;
+            background: #0c0e12;
+            color: white;
+            box-sizing: border-box;
+          ">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="color: #6c757d; display: block; margin-bottom: 5px;">Адрес кошелька</label>
+          <input type="text" id="withdrawAddress" placeholder="Введите адрес" style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2e35;
+            background: #0c0e12;
+            color: white;
+            box-sizing: border-box;
+          ">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+          <label style="color: #6c757d; display: block; margin-bottom: 5px;">Метод вывода</label>
+          <select id="withdrawMethod" style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2e35;
+            background: #0c0e12;
+            color: white;
+            box-sizing: border-box;
+          ">
+            <option value="TRC20">USDT (TRC20)</option>
+            <option value="TON">TON</option>
+            <option value="CRYPTOPAY">CryptoPay</option>
+          </select>
+        </div>
+        
+        <div style="background: #2a2e35; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+          <p style="color: #6c757d; margin: 0; font-size: 12px;">
+            Комиссия: 1%<br>
+            Минимальный вывод: $5
+          </p>
+        </div>
+        
+        <button id="confirmWithdrawBtn" style="
+          background: #00b15e;
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          width: 100%;
+          margin-bottom: 10px;
+        ">
+          Вывести
+        </button>
+        
+        <button id="closeWithdrawModal" style="
+          background: #6c757d;
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          width: 100%;
+        ">
+          Отмена
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.querySelector('#confirmWithdrawBtn').addEventListener('click', () => {
+      const amount = parseFloat(modal.querySelector('#withdrawAmount').value);
+      const address = modal.querySelector('#withdrawAddress').value.trim();
+      const method = modal.querySelector('#withdrawMethod').value;
+      
+      if (!amount || amount < 5) {
+        this.showNotification('Минимальная сумма вывода: $5', 'error');
+        return;
+      }
+      
+      if (!address) {
+        this.showNotification('Введите адрес кошелька', 'error');
+        return;
+      }
+      
+      if (this.currentUser.balance < amount) {
+        this.showNotification('Недостаточно средств на балансе', 'error');
+        return;
+      }
+      
+      this.createWithdrawal(amount, address, method);
+      modal.remove();
+    });
+    
+    modal.querySelector('#closeWithdrawModal').addEventListener('click', () => {
+      modal.remove();
+    });
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
   }
   
   // Уведомления
@@ -709,13 +1091,11 @@ class WaterFallApp {
         this.tg.showAlert(message);
       }
     } else {
-      // Fallback для браузера
       this.showBrowserNotification(message, type);
     }
   }
   
   showBrowserNotification(message, type = 'info') {
-    // Создаем контейнер для уведомлений если его нет
     let container = document.getElementById('notification-container');
     if (!container) {
       container = document.createElement('div');
@@ -767,111 +1147,12 @@ class WaterFallApp {
     
     container.appendChild(notification);
     
-    // Автоматическое удаление через 5 секунд
     setTimeout(() => {
       if (notification.parentElement) {
         notification.style.animation = 'slideOutRight 0.3s ease-in';
         setTimeout(() => notification.remove(), 300);
       }
     }, 5000);
-  }
-  
-  // API вызовы
-  async createOrder(crypto, type, price, amount) {
-    try {
-      const result = await this.api.createOrder({
-        crypto: crypto,
-        type: type,
-        price: parseFloat(price),
-        amount: parseFloat(amount),
-        userId: this.currentUser?.id
-      });
-      
-      if (result.success) {
-        this.showNotification('✅ Ордер успешно создан!', 'success');
-        return true;
-      } else {
-        this.showNotification(`❌ ${result.error}`, 'error');
-        return false;
-      }
-    } catch (error) {
-      this.showNotification(`❌ ${error.message}`, 'error');
-      return false;
-    }
-  }
-  
-  async createDeposit(amount) {
-    try {
-      const result = await this.api.createDeposit({
-        amount: parseFloat(amount),
-        userId: this.currentUser?.id
-      });
-      
-      if (result.success) {
-        if (this.tg && this.tg.openInvoice) {
-          // В Telegram - используем встроенную оплату
-          this.tg.openInvoice(result.invoiceUrl, (status) => {
-            console.log('Invoice status:', status);
-            if (status === 'paid') {
-              this.confirmDeposit(result.invoiceId);
-            } else if (status === 'failed' || status === 'cancelled') {
-              this.showNotification('Оплата отменена или не удалась', 'error');
-            }
-          });
-        } else {
-          // В браузере - открываем в новом окне
-          window.open(result.invoiceUrl, '_blank', 'width=400,height=600');
-          this.showNotification('Откройте ссылку для завершения оплаты', 'info');
-        }
-        
-        return result.invoiceUrl;
-      } else {
-        this.showNotification(`❌ ${result.error}`, 'error');
-        return null;
-      }
-    } catch (error) {
-      this.showNotification(`❌ ${error.message}`, 'error');
-      return null;
-    }
-  }
-  
-  async confirmDeposit(invoiceId) {
-    try {
-      const result = await this.api.confirmDeposit(invoiceId);
-      
-      if (result.success) {
-        this.showNotification(`✅ Депозит $${result.amount} подтвержден!`, 'success');
-        return true;
-      } else {
-        this.showNotification(`❌ ${result.error}`, 'error');
-        return false;
-      }
-    } catch (error) {
-      this.showNotification(`❌ ${error.message}`, 'error');
-      return false;
-    }
-  }
-  
-  async createWithdrawal(amount, address, method = 'USDT') {
-    try {
-      const result = await this.api.createWithdrawal({
-        amount: parseFloat(amount),
-        address: address,
-        method: method,
-        userId: this.currentUser?.id
-      });
-      
-      if (result.success) {
-        this.showNotification(`✅ Вывод $${result.netAmount} успешно обработан!`, 'success');
-        return result;
-      } else {
-        this.showNotification(`❌ ${result.error}`, 'error');
-        return null;
-      }
-    } catch (error) {
-      this.showNotification(`❌ ${error.message}`, 'error');
-      return null;
-    }
   }
   
   // Вспомогательные методы
@@ -883,7 +1164,6 @@ class WaterFallApp {
     return parseFloat(amount).toFixed(decimals);
   }
   
-  // Очистка ресурсов
   destroy() {
     if (this.socket) {
       this.socket.disconnect();
@@ -900,7 +1180,6 @@ let app;
 document.addEventListener('DOMContentLoaded', () => {
   console.log('📄 DOM загружен, инициализация приложения...');
   
-  // Добавляем CSS анимации для уведомлений
   const style = document.createElement('style');
   style.textContent = `
     @keyframes slideInRight {
@@ -986,12 +1265,10 @@ document.addEventListener('DOMContentLoaded', () => {
   `;
   document.head.appendChild(style);
   
-  // Пытаемся загрузить сохраненные рыночные данные
   const savedMarketData = localStorage.getItem('waterfallMarketData');
   if (savedMarketData) {
     try {
       const marketData = JSON.parse(savedMarketData);
-      // Используем сохраненные данные если они не старше 5 минут
       if (Date.now() - marketData.timestamp < 5 * 60 * 1000) {
         window.preloadedMarketData = marketData.data;
         console.log('📊 Предзагружены рыночные данные');
@@ -1009,7 +1286,6 @@ function startTrading(crypto) {
   if (window.app && window.app.showTradingPage) {
     window.app.showTradingPage(crypto);
   } else {
-    // Fallback
     const pages = {
       'MINT': 'trading-MINT.html',
       'RWK': 'trading-RWK.html',
@@ -1053,7 +1329,7 @@ function goToHome() {
   }
 }
 
-// Глобальные функции для торговли
+// Торговые функции
 function placeBuyOrder() {
   if (!window.app) return;
   
@@ -1099,10 +1375,9 @@ function getCurrentCrypto() {
   if (path.includes('trading-')) {
     return path.split('trading-')[1].replace('.html', '');
   }
-  return 'MINT'; // fallback
+  return 'MINT';
 }
 
-// Обработка перед закрытием страницы
 window.addEventListener('beforeunload', () => {
   if (window.app) {
     window.app.destroy();
