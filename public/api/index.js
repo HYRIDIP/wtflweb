@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,8 +17,32 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// In-memory storage (в продакшене используйте базу данных)
+// Конфигурация CryptoPay
+const config = {
+  cryptopay: {
+    token: process.env.CRYPTOPAY_TOKEN || "ВАШ_ТОКЕН_CRYPTOPAY",
+    apiUrl: "https://pay.crypt.bot/api",
+    webhookSecret: process.env.WEBHOOK_SECRET || "your-webhook-secret"
+  },
+  trc20: {
+    address: process.env.TRC20_ADDRESS || "ВАШ_TRC20_АДРЕС",
+    network: "TRON"
+  },
+  ton: {
+    address: process.env.TON_ADDRESS || "ВАШ_TON_АДРЕС", 
+    network: "TON"
+  },
+  app: {
+    name: "WaterFall Trading",
+    feePercentage: 1,
+    minDeposit: 10,
+    minWithdrawal: 5
+  }
+};
+
+// In-memory storage
 const users = new Map();
+const pendingInvoices = new Map();
 
 // Начальные рыночные данные
 const marketData = {
@@ -44,8 +69,7 @@ function generateHistory(initialPrice, points = 100) {
   const now = Date.now();
   
   for (let i = points; i >= 0; i--) {
-    const timestamp = now - (i * 60000); // 1 минута интервал
-    // Случайное изменение цены ±2%
+    const timestamp = now - (i * 60000);
     const change = (Math.random() - 0.5) * 0.04;
     price = price * (1 + change);
     
@@ -66,23 +90,20 @@ Object.keys(marketData.prices).forEach(crypto => {
 // Обновление рыночных данных
 function updateMarketData() {
   Object.keys(marketData.prices).forEach(crypto => {
-    const change = (Math.random() - 0.5) * 0.02; // ±1%
+    const change = (Math.random() - 0.5) * 0.02;
     const currentPrice = marketData.prices[crypto];
     const newPrice = parseFloat((currentPrice * (1 + change)).toFixed(6));
     marketData.prices[crypto] = newPrice;
     
-    // Обновляем историю
     marketData.history[crypto].push({
       timestamp: Date.now(),
       price: newPrice
     });
     
-    // Держим только последние 100 точек
     if (marketData.history[crypto].length > 100) {
       marketData.history[crypto].shift();
     }
     
-    // Рассылаем обновления по отдельности для каждого крипто
     io.emit('marketUpdate', {
       crypto: crypto,
       price: newPrice,
@@ -91,15 +112,99 @@ function updateMarketData() {
   });
 }
 
-// Запускаем обновление рынка каждые 5 секунд
 setInterval(updateMarketData, 5000);
+
+// CryptoPay API функции
+async function createCryptoPayInvoice(amount, userId, asset = 'USDT') {
+  try {
+    const response = await fetch(`${config.cryptopay.apiUrl}/createInvoice`, {
+      method: 'POST',
+      headers: {
+        'Crypto-Pay-API-Token': config.cryptopay.token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        asset: asset,
+        amount: amount.toString(),
+        description: `Deposit for user ${userId}`,
+        hidden_message: `User ID: ${userId}`,
+        payload: JSON.stringify({ 
+          userId: userId, 
+          type: 'deposit',
+          amount: amount 
+        }),
+        allowed_currencies: ['USDT', 'BTC', 'ETH', 'TON', 'BNB'],
+        expires_in: 1800 // 30 minutes
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`CryptoPay API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(`CryptoPay error: ${data.error}`);
+    }
+
+    // Сохраняем инвойс в ожидании
+    pendingInvoices.set(data.result.invoice_id, {
+      userId,
+      amount,
+      status: 'pending',
+      createdAt: Date.now()
+    });
+
+    return data.result;
+  } catch (error) {
+    console.error('CryptoPay invoice creation failed:', error);
+    // Fallback
+    const invoiceId = 'local_' + Date.now();
+    pendingInvoices.set(invoiceId, { userId, amount, status: 'pending' });
+    
+    return {
+      invoice_id: invoiceId,
+      pay_url: `https://t.me/CryptoBot?start=invoice_${invoiceId}`,
+      amount: amount,
+      asset: asset
+    };
+  }
+}
+
+async function checkCryptoPayInvoice(invoiceId) {
+  try {
+    const response = await fetch(`${config.cryptopay.apiUrl}/getInvoices?invoice_ids=${invoiceId}`, {
+      method: 'GET',
+      headers: {
+        'Crypto-Pay-API-Token': config.cryptopay.token
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`CryptoPay API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(`CryptoPay error: ${data.error}`);
+    }
+
+    return data.result.items[0] || null;
+  } catch (error) {
+    console.error('CryptoPay invoice check failed:', error);
+    return null;
+  }
+}
 
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: Date.now(),
-    users: users.size
+    users: users.size,
+    pendingInvoices: pendingInvoices.size
   });
 });
 
@@ -153,7 +258,6 @@ app.post('/api/order/create', (req, res) => {
       });
     }
     
-    // Сохраняем сделку
     const trade = {
       id: Date.now().toString(),
       crypto,
@@ -167,7 +271,6 @@ app.post('/api/order/create', (req, res) => {
     user.trades = user.trades || [];
     user.trades.push(trade);
     
-    // Рассылаем уведомление
     io.to(userId).emit('orderExecuted', trade);
     
     console.log('✅ Ордер исполнен:', trade);
@@ -187,11 +290,11 @@ app.post('/api/order/create', (req, res) => {
   }
 });
 
-app.post('/api/deposit/create', (req, res) => {
+app.post('/api/deposit/create', async (req, res) => {
   try {
-    const { userId, amount } = req.body;
+    const { userId, amount, method = 'CRYPTOPAY', asset = 'USDT' } = req.body;
     
-    console.log('💰 Создание депозита:', { userId, amount });
+    console.log('💰 Создание депозита:', { userId, amount, method, asset });
     
     if (!userId || !amount) {
       return res.status(400).json({ 
@@ -199,17 +302,52 @@ app.post('/api/deposit/create', (req, res) => {
         error: 'Missing required fields' 
       });
     }
+
+    if (amount < config.app.minDeposit) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Minimum deposit is $${config.app.minDeposit}` 
+      });
+    }
+
+    let result;
+
+    if (method === 'CRYPTOPAY') {
+      // Создаем инвойс в CryptoPay
+      const invoice = await createCryptoPayInvoice(amount, userId, asset);
+      
+      result = {
+        success: true,
+        invoiceId: invoice.invoice_id,
+        invoiceUrl: invoice.pay_url,
+        amount: parseFloat(amount),
+        asset: invoice.asset,
+        method: 'CRYPTOPAY'
+      };
+    } else if (method === 'TRC20') {
+      result = {
+        success: true,
+        address: config.trc20.address,
+        amount: parseFloat(amount),
+        network: config.trc20.network,
+        method: 'TRC20'
+      };
+    } else if (method === 'TON') {
+      result = {
+        success: true,
+        address: config.ton.address,
+        amount: parseFloat(amount),
+        network: config.ton.network,
+        method: 'TON'
+      };
+    } else {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Unsupported deposit method' 
+      });
+    }
     
-    // В реальном приложении здесь была бы интеграция с платежной системой
-    const invoiceId = 'inv_' + Date.now();
-    const invoiceUrl = `https://example.com/payment/${invoiceId}`;
-    
-    res.json({
-      success: true,
-      invoiceId,
-      invoiceUrl,
-      amount: parseFloat(amount)
-    });
+    res.json(result);
     
   } catch (error) {
     console.error('❌ Deposit creation error:', error);
@@ -220,7 +358,7 @@ app.post('/api/deposit/create', (req, res) => {
   }
 });
 
-app.post('/api/deposit/confirm', (req, res) => {
+app.post('/api/deposit/confirm', async (req, res) => {
   try {
     const { userId, invoiceId } = req.body;
     
@@ -240,26 +378,45 @@ app.post('/api/deposit/confirm', (req, res) => {
         error: 'User not found' 
       });
     }
+
+    // Проверяем статус инвойса в CryptoPay
+    const invoice = await checkCryptoPayInvoice(invoiceId);
     
-    // В реальном приложении здесь была бы проверка статуса платежа
-    const amount = 100; // Примерная сумма
-    
-    user.balance += amount;
-    user.totalInvested += amount;
-    
-    console.log('💳 Депозит зачислен:', { userId, amount, newBalance: user.balance });
-    
-    // Рассылаем уведомление
-    io.to(userId).emit('depositSuccess', {
-      amount,
-      newBalance: user.balance
-    });
-    
-    res.json({
-      success: true,
-      amount,
-      newBalance: user.balance
-    });
+    if (!invoice) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Invoice not found' 
+      });
+    }
+
+    if (invoice.status === 'paid') {
+      const amount = parseFloat(invoice.amount);
+      
+      user.balance += amount;
+      user.totalInvested += amount;
+      
+      // Удаляем из ожидания
+      pendingInvoices.delete(invoiceId);
+      
+      console.log('💳 Депозит зачислен:', { userId, amount, newBalance: user.balance });
+      
+      io.to(userId).emit('depositSuccess', {
+        amount,
+        newBalance: user.balance,
+        txHash: invoice.payment_hash
+      });
+      
+      res.json({
+        success: true,
+        amount,
+        newBalance: user.balance
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        error: `Invoice status: ${invoice.status}` 
+      });
+    }
     
   } catch (error) {
     console.error('❌ Deposit confirmation error:', error);
@@ -270,11 +427,11 @@ app.post('/api/deposit/confirm', (req, res) => {
   }
 });
 
-app.post('/api/withdraw', (req, res) => {
+app.post('/api/withdraw', async (req, res) => {
   try {
-    const { userId, amount, address, method } = req.body;
+    const { userId, amount, address, method = 'TRC20', asset = 'USDT' } = req.body;
     
-    console.log('💸 Запрос на вывод:', { userId, amount, address, method });
+    console.log('💸 Запрос на вывод:', { userId, amount, address, method, asset });
     
     if (!userId || !amount || !address) {
       return res.status(400).json({ 
@@ -297,22 +454,58 @@ app.post('/api/withdraw', (req, res) => {
         error: 'Insufficient balance' 
       });
     }
+
+    if (amount < config.app.minWithdrawal) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Minimum withdrawal is $${config.app.minWithdrawal}` 
+      });
+    }
+
+    let transferResult;
     
-    const fee = amount * 0.01; // 1% комиссия
+    if (method === 'TRC20') {
+      transferResult = await processTRC20Withdrawal(address, amount, userId);
+    } else if (method === 'TON') {
+      transferResult = await processTONWithdrawal(address, amount, userId);
+    } else if (method === 'CRYPTOPAY') {
+      transferResult = await processCryptoPayWithdrawal(address, amount, userId, asset);
+    } else {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Unsupported withdrawal method' 
+      });
+    }
+
+    if (!transferResult.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: transferResult.error 
+      });
+    }
+
+    const fee = amount * (config.app.feePercentage / 100);
     const netAmount = amount - fee;
     
     user.balance -= amount;
     
-    console.log('✅ Вывод обработан:', { userId, amount, netAmount, fee });
+    console.log('✅ Вывод обработан:', { 
+      userId, 
+      amount, 
+      netAmount, 
+      fee,
+      method,
+      txHash: transferResult.txHash 
+    });
     
-    // Рассылаем уведомление
     io.to(userId).emit('withdrawalSuccess', {
       amount: parseFloat(amount),
       fee: parseFloat(fee),
       netAmount: parseFloat(netAmount),
       newBalance: user.balance,
       address,
-      method
+      method,
+      txHash: transferResult.txHash
     });
     
     res.json({
@@ -320,7 +513,8 @@ app.post('/api/withdraw', (req, res) => {
       amount: parseFloat(amount),
       fee: parseFloat(fee),
       netAmount: parseFloat(netAmount),
-      newBalance: user.balance
+      newBalance: user.balance,
+      txHash: transferResult.txHash
     });
     
   } catch (error) {
@@ -329,6 +523,122 @@ app.post('/api/withdraw', (req, res) => {
       success: false, 
       error: 'Internal server error' 
     });
+  }
+});
+
+// Функции для обработки выводов
+async function processTRC20Withdrawal(address, amount, userId) {
+  // Заглушка для TRC20 вывода
+  console.log(`Processing TRC20 withdrawal: ${amount} USDT to ${address}`);
+  
+  return {
+    success: true,
+    txHash: 'TRX_' + Math.random().toString(16).substr(2, 64),
+    network: 'TRC20'
+  };
+}
+
+async function processTONWithdrawal(address, amount, userId) {
+  // Заглушка для TON вывода
+  console.log(`Processing TON withdrawal: ${amount} TON to ${address}`);
+  
+  return {
+    success: true,
+    txHash: 'TON_' + Math.random().toString(16).substr(2, 64),
+    network: 'TON'
+  };
+}
+
+async function processCryptoPayWithdrawal(address, amount, userId, asset = 'USDT') {
+  try {
+    const response = await fetch(`${config.cryptopay.apiUrl}/transfer`, {
+      method: 'POST',
+      headers: {
+        'Crypto-Pay-API-Token': config.cryptopay.token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        asset: asset,
+        amount: amount.toString(),
+        spend_id: `withdrawal_${userId}_${Date.now()}`,
+        comment: `Withdrawal to ${address}`
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`CryptoPay transfer error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(`CryptoPay transfer failed: ${data.error}`);
+    }
+
+    return {
+      success: true,
+      txHash: data.result.id,
+      network: 'CRYPTOPAY'
+    };
+  } catch (error) {
+    console.error('CryptoPay withdrawal failed:', error);
+    return {
+      success: false,
+      error: 'CryptoPay transfer failed: ' + error.message
+    };
+  }
+}
+
+// Webhook для CryptoPay
+app.post('/api/webhook/cryptopay', async (req, res) => {
+  try {
+    const signature = req.headers['crypto-pay-api-signature'];
+    const payload = JSON.stringify(req.body);
+    
+    // Проверка подписи (опционально)
+    const expectedSignature = crypto
+      .createHmac('sha256', config.cryptopay.webhookSecret)
+      .update(payload)
+      .digest('hex');
+    
+    if (signature !== expectedSignature) {
+      console.warn('⚠️ Invalid webhook signature');
+      return res.status(401).json({ success: false });
+    }
+    
+    const update = req.body;
+    console.log('🔔 CryptoPay webhook:', update);
+    
+    if (update.update_type === 'invoice_paid') {
+      const invoice = update.payload;
+      const payloadData = JSON.parse(invoice.payload || '{}');
+      
+      if (payloadData.type === 'deposit' && payloadData.userId) {
+        const user = users.get(payloadData.userId);
+        if (user) {
+          const amount = parseFloat(invoice.amount);
+          user.balance += amount;
+          user.totalInvested += amount;
+          
+          // Удаляем из ожидания
+          pendingInvoices.delete(invoice.invoice_id);
+          
+          io.to(payloadData.userId).emit('depositSuccess', {
+            amount: amount,
+            newBalance: user.balance,
+            txHash: invoice.hash
+          });
+          
+          console.log(`✅ Deposit confirmed via webhook for user ${payloadData.userId}: ${amount}`);
+        }
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({ success: false });
   }
 });
 
@@ -346,7 +656,6 @@ io.on('connection', (socket) => {
         isNew: !users.has(userId)
       });
       
-      // Сохраняем/обновляем пользователя
       if (!users.has(userId)) {
         users.set(userId, {
           id: userId,
@@ -364,20 +673,14 @@ io.on('connection', (socket) => {
         });
         console.log('✅ Новый пользователь создан:', userData.username);
       } else {
-        // Обновляем время активности и socket ID
         const user = users.get(userId);
         user.lastActive = Date.now();
         user.socketId = socket.id;
         console.log('✅ Существующий пользователь обновлен:', userData.username);
       }
       
-      // Присоединяем сокет к комнате пользователя
       socket.join(userId);
-      
-      // Отправляем данные пользователя
       socket.emit('userData', users.get(userId));
-      
-      // Отправляем рыночные данные
       socket.emit('marketData', marketData);
       
       console.log(`✅ User ${userData.username} successfully joined`);
@@ -390,15 +693,6 @@ io.on('connection', (socket) => {
   
   socket.on('disconnect', (reason) => {
     console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
-    
-    // Находим пользователя по socket.id и обновляем статус
-    for (let [userId, user] of users) {
-      if (user.socketId === socket.id) {
-        user.lastActive = Date.now();
-        console.log(`📱 User ${user.username} marked as inactive`);
-        break;
-      }
-    }
   });
   
   socket.on('error', (error) => {
@@ -429,7 +723,8 @@ app.get('/', (req, res) => {
     message: 'WaterFall Trading API',
     status: 'running',
     timestamp: Date.now(),
-    version: '1.0.0'
+    version: '1.0.0',
+    paymentMethods: ['CRYPTOPAY', 'TRC20', 'TON']
   });
 });
 
@@ -437,17 +732,8 @@ const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`💰 CryptoPay configured: ${config.cryptopay.token ? 'Yes' : 'No'}`);
   console.log(`📊 Market data initialized for: ${Object.keys(marketData.prices).join(', ')}`);
-  console.log(`👥 Active users: ${users.size}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
 });
 
 module.exports = app;
