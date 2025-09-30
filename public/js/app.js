@@ -7,6 +7,7 @@ class WaterFallApp {
     this.cryptos = ['MINT', 'RWK', 'SKH', 'WTFL', 'CULT'];
     this.isTelegram = false;
     this.isInitialized = false;
+    this.chartManager = null;
     
     this.init();
   }
@@ -15,14 +16,17 @@ class WaterFallApp {
     try {
       console.log('🚀 Инициализация WaterFall App...');
       
-      // Инициализируем Telegram
-      await this.initTelegram();
-      
-      // Загружаем или создаем пользователя
+      // Сначала загружаем пользователя
       await this.initUser();
+      
+      // Затем инициализируем Telegram
+      await this.initTelegram();
       
       // Подключаемся к серверу
       await this.connectToServer();
+      
+      // Инициализируем графики
+      this.initCharts();
       
       // Обновляем UI
       this.updateUI();
@@ -70,7 +74,15 @@ class WaterFallApp {
         
         if (dataAge < maxAge) {
           this.currentUser = userData;
+          this.currentUser.lastLogin = Date.now();
           console.log('👤 Пользователь загружен из localStorage:', this.currentUser.username);
+          
+          // Обновляем сообщение приветствия для существующих пользователей
+          const nameEl = document.getElementById('userName');
+          if (nameEl && !this.currentUser.firstLogin) {
+            const displayName = this.currentUser.firstName || this.currentUser.username || 'Трейдер';
+            nameEl.textContent = `С возвращением, ${displayName}!`;
+          }
           return;
         } else {
           console.log('📅 Данные пользователя устарели, создаем новые');
@@ -83,7 +95,7 @@ class WaterFallApp {
     }
     
     // Создаем нового пользователя
-    if (this.isTelegram && this.tg.initDataUnsafe?.user) {
+    if (this.isTelegram && this.tg?.initDataUnsafe?.user) {
       // Пользователь из Telegram
       const telegramUser = this.tg.initDataUnsafe.user;
       this.currentUser = this.createTelegramUser(telegramUser);
@@ -107,14 +119,15 @@ class WaterFallApp {
       firstName: telegramData.first_name || '',
       lastName: telegramData.last_name || '',
       photoUrl: telegramData.photo_url || '/assets/homepage/unsplash-p-at-a8xe.png',
-      balance: 0,
+      balance: 1000, // Начальный баланс
       crypto: { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
       totalInvested: 0,
       firstLogin: true,
       isRealUser: true,
       telegramData: telegramData,
       createdAt: Date.now(),
-      lastLogin: Date.now()
+      lastLogin: Date.now(),
+      trades: [] // История сделок
     };
   }
   
@@ -140,7 +153,8 @@ class WaterFallApp {
       isRealUser: false,
       telegramData: null,
       createdAt: Date.now(),
-      lastLogin: Date.now()
+      lastLogin: Date.now(),
+      trades: [] // История сделок
     };
   }
   
@@ -168,14 +182,16 @@ class WaterFallApp {
       this.setupSocketHandlers();
       
       // Отправляем данные пользователя на сервер
-      const userDataToSend = this.currentUser.isRealUser ? 
-        this.currentUser.telegramData : 
-        {
-          id: this.currentUser.id,
-          username: this.currentUser.username,
-          first_name: this.currentUser.firstName,
-          last_name: this.currentUser.lastName
-        };
+      const userDataToSend = {
+        id: this.currentUser.id,
+        username: this.currentUser.username,
+        firstName: this.currentUser.firstName,
+        lastName: this.currentUser.lastName,
+        isRealUser: this.currentUser.isRealUser,
+        balance: this.currentUser.balance,
+        crypto: this.currentUser.crypto,
+        totalInvested: this.currentUser.totalInvested
+      };
       
       this.socket.emit('join', userDataToSend);
       
@@ -197,6 +213,7 @@ class WaterFallApp {
         this.currentUser.crypto = serverUserData.crypto || this.currentUser.crypto;
         this.currentUser.totalInvested = serverUserData.totalInvested || this.currentUser.totalInvested;
         this.currentUser.firstLogin = serverUserData.firstLogin !== undefined ? serverUserData.firstLogin : this.currentUser.firstLogin;
+        this.currentUser.trades = serverUserData.trades || this.currentUser.trades;
         
         // Сохраняем обновленные данные
         this.saveUserData();
@@ -234,6 +251,31 @@ class WaterFallApp {
         `✅ Ордер исполнен: ${data.type === 'buy' ? 'ПОКУПКА' : 'ПРОДАЖА'} ${data.amount} ${data.crypto} по $${data.price.toFixed(4)}`,
         'success'
       );
+      
+      // Обновляем локальные данные пользователя
+      if (this.currentUser) {
+        if (data.type === 'buy') {
+          this.currentUser.balance -= data.amount * data.price;
+          this.currentUser.crypto[data.crypto] = (this.currentUser.crypto[data.crypto] || 0) + data.amount;
+        } else {
+          this.currentUser.balance += data.amount * data.price;
+          this.currentUser.crypto[data.crypto] = (this.currentUser.crypto[data.crypto] || 0) - data.amount;
+        }
+        
+        // Сохраняем сделку
+        this.currentUser.trades.push({
+          id: Date.now().toString(),
+          crypto: data.crypto,
+          type: data.type,
+          amount: data.amount,
+          price: data.price,
+          total: data.amount * data.price,
+          timestamp: Date.now()
+        });
+        
+        this.saveUserData();
+        this.updateUI();
+      }
     });
     
     this.socket.on('depositSuccess', (data) => {
@@ -255,11 +297,17 @@ class WaterFallApp {
         `💸 Вывод успешен! $${data.netAmount} отправлен на ваш кошелек (комиссия: $${data.fee})`,
         'success'
       );
+      
+      if (this.currentUser) {
+        this.currentUser.balance = data.newBalance;
+        this.saveUserData();
+        this.updateUI();
+      }
     });
     
     this.socket.on('error', (error) => {
       console.error('❌ Ошибка от сервера:', error);
-      this.showNotification(`Ошибка: ${error}`, 'error');
+      this.showNotification(`Ошибка: ${error.message || error}`, 'error');
     });
     
     this.socket.on('connect', () => {
@@ -277,6 +325,14 @@ class WaterFallApp {
       console.log('🔁 Переподключение к серверу');
       this.showNotification('Соединение восстановлено', 'success');
     });
+  }
+  
+  initCharts() {
+    // Инициализируем ChartManager если он доступен
+    if (window.ChartManager) {
+      this.chartManager = new window.ChartManager();
+      window.chartManager = this.chartManager;
+    }
   }
   
   updateUI() {
@@ -305,6 +361,9 @@ class WaterFallApp {
     // Обновляем все элементы баланса
     this.updateBalance();
     this.updateHoldings();
+    
+    // Обновляем историю сделок если на странице торговли
+    this.updateTradeHistory();
   }
   
   updateBalance() {
@@ -361,12 +420,44 @@ class WaterFallApp {
     });
   }
   
+  updateTradeHistory() {
+    if (!this.currentUser?.trades || !Array.isArray(this.currentUser.trades)) return;
+    
+    const historyContainer = document.getElementById('tradeHistory');
+    if (!historyContainer) return;
+    
+    const recentTrades = this.currentUser.trades.slice(-10).reverse();
+    
+    if (recentTrades.length === 0) {
+      historyContainer.innerHTML = '<div class="text-center text-gray2 py-4">Нет сделок</div>';
+      return;
+    }
+    
+    historyContainer.innerHTML = recentTrades.map(trade => `
+      <div class="trade-item ${trade.type}">
+        <div class="trade-info">
+          <span class="trade-type ${trade.type}">${trade.type === 'buy' ? 'ПОКУПКА' : 'ПРОДАЖА'}</span>
+          <span class="trade-crypto">${trade.crypto}</span>
+        </div>
+        <div class="trade-details">
+          <span class="trade-amount">${trade.amount} ${trade.crypto}</span>
+          <span class="trade-price">$${trade.price.toFixed(4)}</span>
+          <span class="trade-total">$${trade.total.toFixed(2)}</span>
+        </div>
+        <div class="trade-time">${new Date(trade.timestamp).toLocaleTimeString()}</div>
+      </div>
+    `).join('');
+  }
+  
   updateCharts() {
     if (!this.marketData) return;
     
-    // Загружаем ChartManager если доступен
-    if (window.chartManager) {
-      window.chartManager.updateAllCharts(this.marketData);
+    // Используем ChartManager если доступен
+    if (this.chartManager) {
+      this.chartManager.updateAllCharts(this.marketData);
+    } else if (window.initAllMiniCharts) {
+      // Используем глобальную функцию для мини-графиков
+      window.initAllMiniCharts(this.marketData);
     } else {
       // Fallback: рисуем базовые графики
       this.drawBasicCharts();
@@ -507,7 +598,23 @@ class WaterFallApp {
       }
     } else {
       // Fallback для браузера
-      alert(message);
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.innerHTML = `
+        <div class="notification-content">
+          <span class="notification-message">${message}</span>
+          <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // Автоматическое удаление через 5 секунд
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.remove();
+        }
+      }, 5000);
     }
   }
   
@@ -521,18 +628,26 @@ class WaterFallApp {
         },
         body: JSON.stringify({
           ...data,
-          userId: this.currentUser.id
+          userId: this.currentUser?.id,
+          timestamp: Date.now()
         })
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
       
-      return await response.json();
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      return result;
     } catch (error) {
       console.error(`❌ API Error (${endpoint}):`, error);
-      throw error;
+      throw new Error(`Сетевая ошибка: ${error.message}`);
     }
   }
   
@@ -553,7 +668,7 @@ class WaterFallApp {
         return false;
       }
     } catch (error) {
-      this.showNotification('❌ Ошибка сети при создании ордера', 'error');
+      this.showNotification(`❌ ${error.message}`, 'error');
       return false;
     }
   }
@@ -587,7 +702,7 @@ class WaterFallApp {
         return null;
       }
     } catch (error) {
-      this.showNotification('❌ Ошибка сети при создании депозита', 'error');
+      this.showNotification(`❌ ${error.message}`, 'error');
       return null;
     }
   }
@@ -606,12 +721,12 @@ class WaterFallApp {
         return false;
       }
     } catch (error) {
-      this.showNotification('❌ Ошибка подтверждения депозита', 'error');
+      this.showNotification(`❌ ${error.message}`, 'error');
       return false;
     }
   }
   
-  async createWithdrawal(amount, address, method) {
+  async createWithdrawal(amount, address, method = 'USDT') {
     try {
       const result = await this.apiCall('/api/withdraw', {
         amount: parseFloat(amount),
@@ -621,21 +736,13 @@ class WaterFallApp {
       
       if (result.success) {
         this.showNotification(`✅ Вывод $${result.netAmount} успешно обработан!`, 'success');
-        
-        // Обновляем баланс локально
-        if (this.currentUser) {
-          this.currentUser.balance -= parseFloat(amount);
-          this.saveUserData();
-          this.updateUI();
-        }
-        
         return result;
       } else {
         this.showNotification(`❌ ${result.error}`, 'error');
         return null;
       }
     } catch (error) {
-      this.showNotification('❌ Ошибка сети при выводе средств', 'error');
+      this.showNotification(`❌ ${error.message}`, 'error');
       return null;
     }
   }
@@ -705,3 +812,71 @@ function goToWallet() {
     window.location.href = 'wallet.html';
   }
 }
+
+// Стили для уведомлений
+const notificationStyles = `
+  .notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    min-width: 300px;
+    max-width: 500px;
+    background: #1e2329;
+    border-left: 4px solid #00b15e;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  .notification.error {
+    border-left-color: #f6465d;
+  }
+  
+  .notification.warning {
+    border-left-color: #f0b90b;
+  }
+  
+  .notification-content {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    color: white;
+  }
+  
+  .notification-message {
+    flex: 1;
+    margin-right: 10px;
+  }
+  
+  .notification-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+`;
+
+// Добавляем стили в документ
+const styleSheet = document.createElement('style');
+styleSheet.textContent = notificationStyles;
+document.head.appendChild(styleSheet);
