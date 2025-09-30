@@ -2,31 +2,23 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.js",
+      "src": "api/index.js",
       "use": "@vercel/node"
     },
     {
-      "src": "**/*.html",
+      "src": "*.html",
       "use": "@vercel/static"
     },
     {
-      "src": "**/*.js",
+      "src": "js/*.js",
       "use": "@vercel/static"
     },
     {
-      "src": "**/*.css",
+      "src": "css/*.css",
       "use": "@vercel/static"
     },
     {
-      "src": "**/*.png",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "**/*.jpg",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "**/*.svg",
+      "src": "assets/**/*",
       "use": "@vercel/static"
     }
   ],
@@ -38,6 +30,12 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
+    },
+    {
+      "src": "/(.*\\.(js|css|png|jpg|svg|ico))",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      }
     },
     {
       "src": "/(.*)",
