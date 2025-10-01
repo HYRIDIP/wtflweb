@@ -108,7 +108,7 @@ function initializeDatabase() {
   const db = readDatabase();
   
   if (!db.marketData) {
-    // Начальные рыночные данные
+    // Начальные рыночные данные с ограниченным supply
     const initialMarketData = {
       prices: {
         MINT: 0.2543,
@@ -117,12 +117,33 @@ function initializeDatabase() {
         WTFL: 1.2456,
         CULT: 0.0876
       },
+      supply: {
+        MINT: 1000000,
+        RWK: 50000000,
+        SKH: 1000000000,
+        WTFL: 500000,
+        CULT: 25000000
+      },
+      circulating: {
+        MINT: 250000,
+        RWK: 15000000,
+        SKH: 350000000,
+        WTFL: 120000,
+        CULT: 8500000
+      },
       history: {
         MINT: generateHistory(0.2543),
         RWK: generateHistory(0.0189),
         SKH: generateHistory(0.0032),
         WTFL: generateHistory(1.2456),
         CULT: generateHistory(0.0876)
+      },
+      volume24h: {
+        MINT: 12500,
+        RWK: 89000,
+        SKH: 450000,
+        WTFL: 56000,
+        CULT: 78000
       }
     };
     
@@ -151,34 +172,57 @@ function generateHistory(initialPrice, points = 100) {
   return history;
 }
 
+// Функция для обновления цены на основе спроса/предложения
+function updatePriceBasedOnVolume(crypto, volumeChange) {
+  const marketData = getMarketData();
+  if (!marketData) return;
+  
+  const currentPrice = marketData.prices[crypto];
+  const currentSupply = marketData.supply[crypto];
+  const currentCirculating = marketData.circulating[crypto];
+  
+  // Простой алгоритм изменения цены на основе объема
+  const demandPressure = volumeChange / currentCirculating;
+  const priceChange = demandPressure * 0.1; // 10% чувствительность
+  
+  const newPrice = currentPrice * (1 + priceChange);
+  marketData.prices[crypto] = parseFloat(Math.max(newPrice, 0.0001).toFixed(6));
+  
+  // Обновляем историю
+  marketData.history[crypto].push({
+    timestamp: Date.now(),
+    price: marketData.prices[crypto]
+  });
+  
+  if (marketData.history[crypto].length > 100) {
+    marketData.history[crypto].shift();
+  }
+  
+  saveMarketData(marketData);
+  
+  return marketData.prices[crypto];
+}
+
 // Обновление рыночных данных
 function updateMarketData() {
   const marketData = getMarketData();
   if (!marketData) return;
   
   Object.keys(marketData.prices).forEach(crypto => {
-    const change = (Math.random() - 0.5) * 0.02;
-    const currentPrice = marketData.prices[crypto];
-    const newPrice = parseFloat((currentPrice * (1 + change)).toFixed(6));
-    marketData.prices[crypto] = newPrice;
+    // Случайное изменение объема для имитации торгов
+    const volumeChange = (Math.random() - 0.3) * marketData.volume24h[crypto] * 0.01;
+    marketData.volume24h[crypto] = Math.max(marketData.volume24h[crypto] + volumeChange, 1000);
     
-    marketData.history[crypto].push({
-      timestamp: Date.now(),
-      price: newPrice
-    });
-    
-    if (marketData.history[crypto].length > 100) {
-      marketData.history[crypto].shift();
-    }
+    // Обновляем цену на основе объема
+    const newPrice = updatePriceBasedOnVolume(crypto, volumeChange);
     
     io.emit('marketUpdate', {
       crypto: crypto,
       price: newPrice,
-      history: marketData.history[crypto]
+      history: marketData.history[crypto],
+      volume24h: marketData.volume24h[crypto]
     });
   });
-  
-  saveMarketData(marketData);
 }
 
 // Инициализация при запуске
@@ -251,11 +295,10 @@ async function createCryptoPayInvoice(amount, userId, asset = 'USDT') {
     return data.result;
   } catch (error) {
     console.error('CryptoPay invoice creation failed:', error);
-    const invoiceId = 'local_' + Date.now();
-    
+    // Fallback для тестирования
     return {
-      invoice_id: invoiceId,
-      pay_url: `https://t.me/CryptoBot?start=invoice_${invoiceId}`,
+      invoice_id: 'test_' + Date.now(),
+      pay_url: `https://t.me/CryptoTestBot?start=test_${Date.now()}`,
       amount: amount,
       asset: asset
     };
@@ -317,7 +360,9 @@ app.post('/api/order/create', (req, res) => {
       });
     }
     
-    const totalCost = price * amount;
+    const marketData = getMarketData();
+    const currentPrice = marketData.prices[crypto];
+    const totalCost = currentPrice * amount;
     
     if (type === 'buy') {
       if (user.balance < totalCost) {
@@ -326,6 +371,10 @@ app.post('/api/order/create', (req, res) => {
           error: 'Insufficient balance' 
         });
       }
+      
+      // Обновляем объем и цену
+      const volumeIncrease = totalCost * 0.1;
+      updatePriceBasedOnVolume(crypto, volumeIncrease);
       
       user.balance -= totalCost;
       user.crypto[crypto] = (user.crypto[crypto] || 0) + parseFloat(amount);
@@ -336,6 +385,10 @@ app.post('/api/order/create', (req, res) => {
           error: 'Insufficient crypto balance' 
         });
       }
+      
+      // Обновляем объем и цену
+      const volumeIncrease = totalCost * 0.08;
+      updatePriceBasedOnVolume(crypto, -volumeIncrease);
       
       user.balance += totalCost;
       user.crypto[crypto] -= parseFloat(amount);
@@ -351,7 +404,7 @@ app.post('/api/order/create', (req, res) => {
       crypto,
       type,
       amount: parseFloat(amount),
-      price: parseFloat(price),
+      price: currentPrice,
       total: totalCost,
       timestamp: Date.now()
     };
@@ -441,6 +494,59 @@ app.post('/api/deposit/create', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Deposit creation error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Подтверждение депозита (имитация)
+app.post('/api/deposit/confirm', async (req, res) => {
+  try {
+    const { userId, invoiceId } = req.body;
+    
+    console.log('✅ Подтверждение депозита:', { userId, invoiceId });
+    
+    if (!userId || !invoiceId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields' 
+      });
+    }
+    
+    const user = getUser(userId);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+
+    // Имитируем успешный депозит
+    const amount = 100; // Тестовая сумма
+    
+    user.balance += amount;
+    user.totalInvested += amount;
+    user.lastActive = Date.now();
+    
+    saveUser(user);
+    
+    console.log('💳 Депозит зачислен:', { userId, amount, newBalance: user.balance });
+    
+    io.to(userId).emit('depositSuccess', {
+      amount,
+      newBalance: user.balance
+    });
+    
+    res.json({
+      success: true,
+      amount,
+      newBalance: user.balance
+    });
+    
+  } catch (error) {
+    console.error('❌ Deposit confirmation error:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error' 
@@ -563,7 +669,7 @@ io.on('connection', (socket) => {
           firstName: userData.firstName || '',
           lastName: userData.lastName || '',
           photoUrl: userData.photoUrl || '/assets/homepage/unsplash-p-at-a8xe.png',
-          balance: 0, // Начинаем с 0 баланса
+          balance: 0, // НАЧИНАЕМ С 0 БАЛАНСА
           crypto: { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
           totalInvested: 0,
           firstLogin: true,
