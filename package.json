@@ -1,7 +1,7 @@
 {
   "name": "wtflweb",
   "version": "1.0.0",
-  "description": "WaterFall Trading Platform",
+  "description": "WaterFall Trading Platform - Telegram Only",
   "main": "server.js",
   "scripts": {
     "dev": "node server.js",
