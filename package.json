@@ -1,11 +1,11 @@
 {
-  "name": "waterfall-trading",
+  "name": "wtflweb",
   "version": "1.0.0",
-  "description": "Cryptocurrency trading platform",
-  "main": "api/index.js",
+  "description": "WaterFall Trading Platform",
+  "main": "server.js",
   "scripts": {
-    "dev": "node api/index.js",
-    "start": "node api/index.js",
+    "dev": "node server.js",
+    "start": "node server.js",
     "build": "echo 'No build step required'"
   },
   "dependencies": {
