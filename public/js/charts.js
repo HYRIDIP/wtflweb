@@ -2,7 +2,7 @@ class TradingChart {
   constructor(canvasId, crypto) {
     this.canvas = document.getElementById(canvasId);
     if (!this.canvas) {
-      console.error(`Canvas element with id '${canvasId}' not found`);
+      console.error(`❌ Canvas element with id '${canvasId}' not found`);
       return;
     }
     
@@ -14,6 +14,7 @@ class TradingChart {
     this.scrollOffset = 0;
     this.isInitialized = false;
     
+    console.log(`✅ TradingChart создан для ${crypto}`, { canvasId, canvas: this.canvas });
     this.init();
   }
   
@@ -21,8 +22,6 @@ class TradingChart {
     if (!this.canvas) return;
     
     this.resize();
-    
-    // Откладываем добавление обработчиков до первого взаимодействия
     this.setupEventListeners();
     
     this.isInitialized = true;
@@ -30,22 +29,7 @@ class TradingChart {
   }
   
   setupEventListeners() {
-    // Используем passive events для лучшей производительности
-    const options = { passive: true };
-    
-    window.addEventListener('resize', () => this.resize(), options);
-    
-    // Обработчики для интерактивности
-    this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-    this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-    this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
-    this.canvas.addEventListener('mouseleave', this.onMouseUp.bind(this));
-    this.canvas.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
-    
-    // Touch события
-    this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this), options);
-    this.canvas.addEventListener('touchmove', this.onTouchMove.bind(this), options);
-    this.canvas.addEventListener('touchend', this.onTouchEnd.bind(this), options);
+    window.addEventListener('resize', () => this.resize());
   }
   
   resize() {
@@ -60,14 +44,12 @@ class TradingChart {
       return;
     }
     
-    // Сохраняем текущие размеры для проверки
     const oldWidth = this.canvas.width;
     const oldHeight = this.canvas.height;
     
     this.canvas.width = container.clientWidth;
     this.canvas.height = container.clientHeight;
     
-    // Перерисовываем только если размеры изменились
     if (oldWidth !== this.canvas.width || oldHeight !== this.canvas.height) {
       console.log(`📏 Canvas ${this.crypto} resized to: ${this.canvas.width}x${this.canvas.height}`);
       this.draw();
@@ -83,7 +65,6 @@ class TradingChart {
     this.data = newData;
     console.log(`📊 Data updated for ${this.crypto}: ${newData.length} points`);
     
-    // Используем requestAnimationFrame для плавной отрисовки
     if (this.data.length > 0) {
       requestAnimationFrame(() => this.draw());
     }
@@ -101,6 +82,7 @@ class TradingChart {
     this.ctx.clearRect(0, 0, width, height);
     
     if (this.data.length < 2) {
+      console.log(`❌ Недостаточно данных для графика ${this.crypto}: ${this.data.length} точек`);
       this.drawNoData();
       return;
     }
@@ -125,6 +107,8 @@ class TradingChart {
       
       // Рисуем график
       this.drawChartLine(visibleData, padding, chartWidth, chartHeight, minPrice, priceRange);
+      
+      console.log(`✅ График ${this.crypto} нарисован: ${visibleData.length} точек`);
       
     } catch (error) {
       console.error('Error drawing chart:', error);
@@ -156,36 +140,6 @@ class TradingChart {
     });
     
     ctx.stroke();
-    
-    // Добавляем легкую заливку под графиком
-    if (visibleData.length > 1) {
-      const firstPoint = visibleData[0];
-      const lastPoint = visibleData[visibleData.length - 1];
-      
-      const firstX = padding.left;
-      const firstY = padding.top + chartHeight - ((firstPoint.price - minPrice) / priceRange) * chartHeight;
-      const lastX = padding.left + chartWidth;
-      const lastY = padding.top + chartHeight - ((lastPoint.price - minPrice) / priceRange) * chartHeight;
-      
-      ctx.globalAlpha = 0.1;
-      ctx.fillStyle = isPositive ? '#00b15e' : '#f6465d';
-      
-      ctx.beginPath();
-      ctx.moveTo(firstX, firstY);
-      
-      visibleData.forEach((point, index) => {
-        const x = padding.left + (index / (visibleData.length - 1)) * chartWidth;
-        const y = padding.top + chartHeight - ((point.price - minPrice) / priceRange) * chartHeight;
-        ctx.lineTo(x, y);
-      });
-      
-      ctx.lineTo(lastX, padding.top + chartHeight);
-      ctx.lineTo(firstX, padding.top + chartHeight);
-      ctx.closePath();
-      ctx.fill();
-      
-      ctx.globalAlpha = 1.0;
-    }
   }
   
   drawNoData() {
@@ -211,82 +165,11 @@ class TradingChart {
   }
   
   getVisibleData() {
-    // Для мини-графиков показываем последние 20 точек
     const startIndex = Math.max(0, this.data.length - 20);
     return this.data.slice(startIndex);
   }
   
-  // Обработчики событий для интерактивности
-  onMouseDown(e) {
-    this.isDragging = true;
-    this.startX = e.clientX;
-    this.scrollOffset = 0;
-    this.canvas.style.cursor = 'grabbing';
-  }
-  
-  onMouseMove(e) {
-    if (!this.isDragging) return;
-    
-    const deltaX = e.clientX - this.startX;
-    this.scrollOffset = deltaX;
-    
-    // Ограничиваем частоту перерисовки
-    if (!this._lastDraw || Date.now() - this._lastDraw > 16) {
-      this.draw();
-      this._lastDraw = Date.now();
-    }
-  }
-  
-  onMouseUp() {
-    this.isDragging = false;
-    this.canvas.style.cursor = 'default';
-  }
-  
-  onWheel(e) {
-    e.preventDefault();
-    // Логика зума может быть добавлена позже
-    this.draw();
-  }
-  
-  onTouchStart(e) {
-    if (e.touches.length === 1) {
-      e.preventDefault();
-      this.isDragging = true;
-      this.startX = e.touches[0].clientX;
-    }
-  }
-  
-  onTouchMove(e) {
-    if (!this.isDragging || e.touches.length !== 1) return;
-    e.preventDefault();
-    
-    const deltaX = e.touches[0].clientX - this.startX;
-    this.scrollOffset = deltaX;
-    
-    if (!this._lastDraw || Date.now() - this._lastDraw > 16) {
-      this.draw();
-      this._lastDraw = Date.now();
-    }
-  }
-  
-  onTouchEnd() {
-    this.isDragging = false;
-  }
-  
-  // Очистка ресурсов
   destroy() {
-    if (this.canvas) {
-      // Удаляем все обработчики событий
-      const canvas = this.canvas;
-      canvas.removeEventListener('mousedown', this.onMouseDown);
-      canvas.removeEventListener('mousemove', this.onMouseMove);
-      canvas.removeEventListener('mouseup', this.onMouseUp);
-      canvas.removeEventListener('wheel', this.onWheel);
-      canvas.removeEventListener('touchstart', this.onTouchStart);
-      canvas.removeEventListener('touchmove', this.onTouchMove);
-      canvas.removeEventListener('touchend', this.onTouchEnd);
-    }
-    
     window.removeEventListener('resize', this.resize);
   }
 }
@@ -298,11 +181,10 @@ class MiniChart {
   static init(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
-      console.log(`MiniChart: Canvas ${canvasId} not found`);
+      console.log(`❌ MiniChart: Canvas ${canvasId} not found`);
       return null;
     }
     
-    // Проверяем, есть ли уже экземпляр для этого canvas
     if (this.instances.has(canvasId)) {
       return this.instances.get(canvasId);
     }
@@ -315,6 +197,7 @@ class MiniChart {
     };
     
     this.instances.set(canvasId, instance);
+    console.log(`✅ MiniChart инициализирован: ${canvasId}`);
     return instance;
   }
   
@@ -332,7 +215,7 @@ class MiniChart {
     // Проверяем, изменились ли данные
     const dataHash = JSON.stringify(data);
     if (dataHash === instance.lastDataHash && instance.data.length > 0) {
-      return; // Данные не изменились, пропускаем перерисовку
+      return;
     }
     
     instance.data = data || [];
@@ -346,6 +229,7 @@ class MiniChart {
     
     if (!data || data.length < 2) {
       MiniChart.drawNoData(ctx, width, height);
+      console.log(`❌ MiniChart ${canvasId}: недостаточно данных`);
       return;
     }
     
@@ -377,6 +261,7 @@ class MiniChart {
       });
       
       ctx.stroke();
+      console.log(`✅ MiniChart ${canvasId} нарисован: ${data.length} точек`);
       
     } catch (error) {
       console.error(`Error drawing mini chart ${canvasId}:`, error);
@@ -411,7 +296,6 @@ class MiniChart {
     cryptos.forEach(crypto => {
       const history = marketData.history[crypto];
       if (history && history.length > 0) {
-        // Используем последние 20 точек для мини-графика
         const chartData = history.slice(-20);
         this.draw(`chart-${crypto}`, chartData);
       } else {
@@ -455,11 +339,17 @@ class ChartManager {
     
     const chart = new TradingChart(canvasId, crypto);
     this.charts.set(canvasId, chart);
+    console.log(`✅ Торговый график создан: ${canvasId} для ${crypto}`);
     return chart;
   }
   
   updateAllCharts(marketData) {
-    if (!marketData) return;
+    if (!marketData) {
+      console.error('❌ ChartManager: нет рыночных данных');
+      return;
+    }
+    
+    console.log('📈 ChartManager обновляет графики с данными:', marketData);
     
     // Обновляем мини-графики
     MiniChart.updateAll(marketData);
@@ -469,7 +359,10 @@ class ChartManager {
       const crypto = chart.crypto;
       const history = marketData.history?.[crypto];
       if (history && history.length > 0) {
+        console.log(`✅ Обновляем график ${crypto} с ${history.length} точками`);
         chart.updateData(history);
+      } else {
+        console.log(`❌ Нет данных для графика ${crypto}`);
       }
     });
   }
@@ -501,6 +394,7 @@ function initAllMiniCharts(marketData) {
     return;
   }
   
+  console.log('🎯 initAllMiniCharts вызван с данными:', marketData);
   MiniChart.updateAll(marketData);
 }
 
@@ -522,9 +416,9 @@ document.addEventListener('DOMContentLoaded', function() {
   console.log('📈 Загрузка ChartManager...');
   initChartManager();
   
-  // Пытаемся обновить мини-графики если есть предзагруженные данные
   if (window.preloadedMarketData) {
     setTimeout(() => {
+      console.log('📊 Используем предзагруженные рыночные данные');
       initAllMiniCharts(window.preloadedMarketData);
     }, 100);
   }
