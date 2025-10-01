@@ -16,7 +16,7 @@ const io = new Server(server, {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Конфигурация CryptoPay
 const config = {
@@ -240,7 +240,7 @@ app.post('/api/order/create', (req, res) => {
         return res.status(400).json({ 
           success: false, 
           error: 'Insufficient crypto balance' 
-        });
+      });
       }
       
       user.balance += totalCost;
