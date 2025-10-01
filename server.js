@@ -6,11 +6,15 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// Правильная настройка Socket.io
 const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  // Важно для Vercel
+  transports: ['websocket', 'polling']
 });
 
 // Middleware
@@ -136,6 +140,11 @@ app.get('/trading-:crypto.html', (req, res) => {
   res.sendFile(path.join(__dirname, `public/trading-${crypto}.html`));
 });
 
+// Serve Socket.io client (важно!)
+app.get('/socket.io/socket.io.js', (req, res) => {
+  res.redirect('https://cdn.socket.io/4.7.2/socket.io.min.js');
+});
+
 // CryptoPay API функции
 async function createCryptoPayInvoice(amount, userId, asset = 'USDT') {
   try {
@@ -240,7 +249,7 @@ app.post('/api/order/create', (req, res) => {
         return res.status(400).json({ 
           success: false, 
           error: 'Insufficient crypto balance' 
-      });
+        });
       }
       
       user.balance += totalCost;
