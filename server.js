@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,7 +14,6 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  // Важно для Vercel
   transports: ['websocket', 'polling']
 });
 
@@ -44,27 +44,92 @@ const config = {
   }
 };
 
-// In-memory storage
-const users = new Map();
-const pendingInvoices = new Map();
+// База данных (файловая)
+const DB_FILE = path.join(__dirname, 'database.json');
 
-// Начальные рыночные данные
-const marketData = {
-  prices: {
-    MINT: 0.2543,
-    RWK: 0.0189,
-    SKH: 0.0032,
-    WTFL: 1.2456,
-    CULT: 0.0876
-  },
-  history: {
-    MINT: [],
-    RWK: [],
-    SKH: [],
-    WTFL: [],
-    CULT: []
+// Функции для работы с базой данных
+function readDatabase() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = fs.readFileSync(DB_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('❌ Ошибка чтения базы данных:', error);
   }
-};
+  
+  // Возвращаем пустую структуру если файла нет
+  return {
+    users: {},
+    marketData: null,
+    pendingInvoices: {}
+  };
+}
+
+function writeDatabase(data) {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка записи в базу данных:', error);
+    return false;
+  }
+}
+
+function getUser(userId) {
+  const db = readDatabase();
+  return db.users[userId] || null;
+}
+
+function saveUser(user) {
+  const db = readDatabase();
+  db.users[user.id] = user;
+  return writeDatabase(db);
+}
+
+function getAllUsers() {
+  const db = readDatabase();
+  return db.users;
+}
+
+function saveMarketData(marketData) {
+  const db = readDatabase();
+  db.marketData = marketData;
+  return writeDatabase(db);
+}
+
+function getMarketData() {
+  const db = readDatabase();
+  return db.marketData;
+}
+
+// Инициализация базы данных при запуске
+function initializeDatabase() {
+  const db = readDatabase();
+  
+  if (!db.marketData) {
+    // Начальные рыночные данные
+    const initialMarketData = {
+      prices: {
+        MINT: 0.2543,
+        RWK: 0.0189,
+        SKH: 0.0032,
+        WTFL: 1.2456,
+        CULT: 0.0876
+      },
+      history: {
+        MINT: generateHistory(0.2543),
+        RWK: generateHistory(0.0189),
+        SKH: generateHistory(0.0032),
+        WTFL: generateHistory(1.2456),
+        CULT: generateHistory(0.0876)
+      }
+    };
+    
+    saveMarketData(initialMarketData);
+    console.log('✅ База данных инициализирована');
+  }
+}
 
 // Генерация исторических данных
 function generateHistory(initialPrice, points = 100) {
@@ -86,13 +151,11 @@ function generateHistory(initialPrice, points = 100) {
   return history;
 }
 
-// Инициализация исторических данных
-Object.keys(marketData.prices).forEach(crypto => {
-  marketData.history[crypto] = generateHistory(marketData.prices[crypto]);
-});
-
 // Обновление рыночных данных
 function updateMarketData() {
+  const marketData = getMarketData();
+  if (!marketData) return;
+  
   Object.keys(marketData.prices).forEach(crypto => {
     const change = (Math.random() - 0.5) * 0.02;
     const currentPrice = marketData.prices[crypto];
@@ -114,8 +177,14 @@ function updateMarketData() {
       history: marketData.history[crypto]
     });
   });
+  
+  saveMarketData(marketData);
 }
 
+// Инициализация при запуске
+initializeDatabase();
+
+// Запускаем обновление рынка каждые 5 секунд
 setInterval(updateMarketData, 5000);
 
 // Serve HTML files
@@ -140,7 +209,7 @@ app.get('/trading-:crypto.html', (req, res) => {
   res.sendFile(path.join(__dirname, `public/trading-${crypto}.html`));
 });
 
-// Serve Socket.io client (важно!)
+// Serve Socket.io client
 app.get('/socket.io/socket.io.js', (req, res) => {
   res.redirect('https://cdn.socket.io/4.7.2/socket.io.min.js');
 });
@@ -179,18 +248,10 @@ async function createCryptoPayInvoice(amount, userId, asset = 'USDT') {
       throw new Error(`CryptoPay error: ${data.error}`);
     }
 
-    pendingInvoices.set(data.result.invoice_id, {
-      userId,
-      amount,
-      status: 'pending',
-      createdAt: Date.now()
-    });
-
     return data.result;
   } catch (error) {
     console.error('CryptoPay invoice creation failed:', error);
     const invoiceId = 'local_' + Date.now();
-    pendingInvoices.set(invoiceId, { userId, amount, status: 'pending' });
     
     return {
       invoice_id: invoiceId,
@@ -203,12 +264,36 @@ async function createCryptoPayInvoice(amount, userId, asset = 'USDT') {
 
 // API Routes
 app.get('/api/health', (req, res) => {
+  const db = readDatabase();
   res.json({ 
     status: 'OK', 
     timestamp: Date.now(),
-    users: users.size,
-    pendingInvoices: pendingInvoices.size
+    users: Object.keys(db.users).length,
+    totalBalance: Object.values(db.users).reduce((sum, user) => sum + user.balance, 0)
   });
+});
+
+// Получить статистику (для админа)
+app.get('/api/admin/stats', (req, res) => {
+  const db = readDatabase();
+  const users = Object.values(db.users);
+  
+  const stats = {
+    totalUsers: users.length,
+    totalBalance: users.reduce((sum, user) => sum + user.balance, 0),
+    totalInvested: users.reduce((sum, user) => sum + user.totalInvested, 0),
+    activeTrades: users.reduce((sum, user) => sum + (user.trades?.length || 0), 0),
+    users: users.map(user => ({
+      id: user.id,
+      username: user.username,
+      balance: user.balance,
+      totalInvested: user.totalInvested,
+      trades: user.trades?.length || 0,
+      lastActive: user.lastActive
+    }))
+  };
+  
+  res.json(stats);
 });
 
 app.post('/api/order/create', (req, res) => {
@@ -224,7 +309,7 @@ app.post('/api/order/create', (req, res) => {
       });
     }
     
-    const user = users.get(userId);
+    const user = getUser(userId);
     if (!user) {
       return res.status(404).json({ 
         success: false, 
@@ -273,6 +358,9 @@ app.post('/api/order/create', (req, res) => {
     
     user.trades = user.trades || [];
     user.trades.push(trade);
+    user.lastActive = Date.now();
+    
+    saveUser(user);
     
     io.to(userId).emit('orderExecuted', trade);
     
@@ -373,7 +461,7 @@ app.post('/api/withdraw', async (req, res) => {
       });
     }
     
-    const user = users.get(userId);
+    const user = getUser(userId);
     if (!user) {
       return res.status(404).json({ 
         success: false, 
@@ -400,6 +488,9 @@ app.post('/api/withdraw', async (req, res) => {
     const netAmount = amount - fee;
     
     user.balance -= amount;
+    user.lastActive = Date.now();
+    
+    saveUser(user);
     
     console.log('✅ Вывод обработан:', { 
       userId, 
@@ -445,40 +536,60 @@ io.on('connection', (socket) => {
     try {
       const userId = userData.id;
       
-      console.log('👤 User join:', { 
+      if (!userId) {
+        socket.emit('error', { message: 'User ID is required' });
+        return;
+      }
+      
+      console.log('👤 User join attempt:', { 
         userId, 
         username: userData.username,
-        isNew: !users.has(userId)
+        isTelegram: userData.isTelegramUser
       });
       
-      if (!users.has(userId)) {
-        users.set(userId, {
+      let user = getUser(userId);
+      const isNewUser = !user;
+      
+      if (isNewUser) {
+        // СОЗДАЕМ ТОЛЬКО TELEGRAM ПОЛЬЗОВАТЕЛЕЙ
+        if (!userData.isTelegramUser) {
+          socket.emit('error', { message: 'Only Telegram users are allowed' });
+          return;
+        }
+        
+        user = {
           id: userId,
-          username: userData.username,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          balance: userData.balance || 1000,
-          crypto: userData.crypto || { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
-          totalInvested: userData.totalInvested || 0,
-          firstLogin: userData.firstLogin !== false,
-          isRealUser: userData.isRealUser || false,
-          trades: userData.trades || [],
+          username: userData.username || `User${userId.slice(-4)}`,
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          photoUrl: userData.photoUrl || '/assets/homepage/unsplash-p-at-a8xe.png',
+          balance: 0, // Начинаем с 0 баланса
+          crypto: { MINT: 0, RWK: 0, SKH: 0, WTFL: 0, CULT: 0 },
+          totalInvested: 0,
+          firstLogin: true,
+          isTelegramUser: true,
+          telegramData: userData.telegramData || null,
+          createdAt: Date.now(),
           lastActive: Date.now(),
+          trades: [],
           socketId: socket.id
-        });
-        console.log('✅ Новый пользователь создан:', userData.username);
+        };
+        
+        saveUser(user);
+        console.log('✅ Новый Telegram пользователь создан:', user.username);
       } else {
-        const user = users.get(userId);
+        // Обновляем существующего пользователя
         user.lastActive = Date.now();
         user.socketId = socket.id;
-        console.log('✅ Существующий пользователь обновлен:', userData.username);
+        saveUser(user);
+        console.log('✅ Существующий пользователь обновлен:', user.username);
       }
       
       socket.join(userId);
-      socket.emit('userData', users.get(userId));
-      socket.emit('marketData', marketData);
+      socket.emit('userData', user);
+      socket.emit('marketData', getMarketData());
       
-      console.log(`✅ User ${userData.username} successfully joined`);
+      console.log(`✅ User ${user.username} successfully joined`);
       
     } catch (error) {
       console.error('❌ Join error:', error);
@@ -494,9 +605,11 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
+  const db = readDatabase();
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`💰 CryptoPay configured: ${config.cryptopay.token ? 'Yes' : 'No'}`);
-  console.log(`📊 Market data initialized for: ${Object.keys(marketData.prices).join(', ')}`);
+  console.log(`👥 Total users: ${Object.keys(db.users).length}`);
+  console.log(`📊 Market data: ${db.marketData ? 'Loaded' : 'Not loaded'}`);
 });
 
 module.exports = app;
